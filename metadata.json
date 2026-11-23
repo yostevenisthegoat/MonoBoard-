@@ -1,0 +1,6 @@
+{
+  "name": "Mono Board",
+  "description": "100% offline open-source board game platform featuring Pass & Play, AI opponents, and dozens of classic board, card, strategy, puzzle, and word games.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
