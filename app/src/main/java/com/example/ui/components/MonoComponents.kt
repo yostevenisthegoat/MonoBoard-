@@ -58,6 +58,7 @@ fun MonoCard(
     )
     Surface(
         modifier = modifier
+            .then(if (onClick != null) Modifier.bouncyPress() else Modifier)
             .clip(MaterialTheme.shapes.medium)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         shape = MaterialTheme.shapes.medium,
@@ -248,6 +249,7 @@ fun GameCatalogCard(
                 onClick = onToggleFavorite,
                 modifier = Modifier
                     .minimumInteractiveComponentSize()
+                    .springPop(isFavorite, popScale = 1.25f)
                     .testTag("fav_${game.id}")
             ) {
                 Icon(

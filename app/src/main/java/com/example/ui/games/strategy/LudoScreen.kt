@@ -40,16 +40,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.rememberCoroutineScope
 import com.example.data.repo.MatchOutcome
 import com.example.data.sound.SoundCue
 import com.example.domain.GameCatalog
 import com.example.domain.GameSessionConfig
+import com.example.ui.components.AnimatedDieView
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
 import com.example.ui.components.PassAndPlayTurnHeader
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 // 15x15 Ludo grid track coordinates (52 outer squares clockwise starting from Red/Player0 entry (6,1))
 private val ludoOuterTrack = listOf(
@@ -104,9 +110,12 @@ fun LudoScreen(
     }
     var activeSeat by remember { mutableIntStateOf(0) }
     var rolledValue by remember { mutableStateOf<Int?>(null) }
+    var lastRolledFace by remember { mutableIntStateOf(1) }
+    var isRolling by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("Roll dice to begin.") }
     var winnerSeat by remember { mutableStateOf<Int?>(null) }
     var recorded by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     fun seatTrackColorIndex(seat: Int): Int {
         return if (sessionConfig.players.size == 2 && seat == 1) 2 else seat
@@ -165,7 +174,7 @@ fun LudoScreen(
             return
         }
 
-        onPlayCue(if (captured) SoundCue.CAPTURE else SoundCue.MOVE)
+        onPlayCue(if (captured) SoundCue.CAPTURE else SoundCue.BOUNCE)
         if (roll == 6 || captured || nextPos == 56) {
             statusText = "${sessionConfig.players[activeSeat].name} earned a bonus roll!"
         } else {
@@ -175,25 +184,32 @@ fun LudoScreen(
     }
 
     fun rollDice() {
-        if (rolledValue != null || winnerSeat != null) return
-        val r = (1..6).random()
-        rolledValue = r
-        onPlayCue(SoundCue.MOVE)
-        val movable = movableTokens(activeSeat, r)
-        if (movable.isEmpty()) {
-            statusText = "${sessionConfig.players[activeSeat].name} rolled $r — no legal moves."
-            rolledValue = null
-            activeSeat = (activeSeat + 1) % sessionConfig.players.size
-        } else if (movable.size == 1 && !sessionConfig.players[activeSeat].isAi) {
-            moveToken(movable.first())
-        } else {
-            statusText = "${sessionConfig.players[activeSeat].name} rolled $r — pick a highlighted token."
+        if (isRolling || rolledValue != null || winnerSeat != null) return
+        isRolling = true
+        onPlayCue(SoundCue.DICE_ROLL)
+        scope.launch {
+            delay(360L)
+            val r = (1..6).random()
+            lastRolledFace = r
+            isRolling = false
+            rolledValue = r
+            val movable = movableTokens(activeSeat, r)
+            if (movable.isEmpty()) {
+                statusText = "${sessionConfig.players[activeSeat].name} rolled $r — no legal moves."
+                onPlayCue(SoundCue.TURN_PASS)
+                rolledValue = null
+                activeSeat = (activeSeat + 1) % sessionConfig.players.size
+            } else if (movable.size == 1 && !sessionConfig.players[activeSeat].isAi) {
+                moveToken(movable.first())
+            } else {
+                statusText = "${sessionConfig.players[activeSeat].name} rolled $r — pick a highlighted token."
+            }
         }
     }
 
     val activePlayer = sessionConfig.players[activeSeat]
-    LaunchedEffect(activeSeat, rolledValue, winnerSeat) {
-        if (winnerSeat == null && activePlayer.isAi) {
+    LaunchedEffect(activeSeat, rolledValue, isRolling, winnerSeat) {
+        if (winnerSeat == null && activePlayer.isAi && !isRolling) {
             delay(450L)
             if (rolledValue == null) {
                 rollDice()
@@ -219,7 +235,7 @@ fun LudoScreen(
 
     fun restart() {
         tokens = List(sessionConfig.players.size) { List(4) { -1 } }
-        activeSeat = 0; rolledValue = null; winnerSeat = null; recorded = false
+        activeSeat = 0; rolledValue = null; lastRolledFace = 1; isRolling = false; winnerSeat = null; recorded = false
         statusText = "Roll dice to begin."
     }
 
@@ -312,6 +328,8 @@ fun LudoScreen(
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxSize(0.75f)
+                                                .springPop(sIdx to tIdx, popScale = 1.22f)
+                                                .pulseEffect(isMovable && !activePlayer.isAi, maxScale = 1.18f)
                                                 .clip(CircleShape)
                                                 .background(ludoPlayerColors[seatTrackColorIndex(sIdx)])
                                                 .border(
@@ -337,20 +355,27 @@ fun LudoScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    AnimatedDieView(
+                        value = lastRolledFace,
+                        isRolling = isRolling,
+                        size = 42.dp
+                    )
                     Box(
                         modifier = Modifier
-                            .size(16.dp)
+                            .size(14.dp)
                             .clip(CircleShape)
                             .background(ludoPlayerColors[seatTrackColorIndex(activeSeat)])
                     )
                     Text(
-                        text = rolledValue?.let { "Rolled: $it" } ?: "${activePlayer.name}'s Turn",
+                        text = if (isRolling) "Rolling..." else rolledValue?.let { "Rolled: $it" } ?: "${activePlayer.name}'s Turn",
                         style = MaterialTheme.typography.titleMedium.copy(fontFamily = JetBrainsMonoFontFamily)
                     )
                 }
+                val canRoll = !isRolling && rolledValue == null && !activePlayer.isAi && winnerSeat == null
                 Button(
                     onClick = ::rollDice,
-                    enabled = rolledValue == null && !activePlayer.isAi && winnerSeat == null
+                    enabled = canRoll,
+                    modifier = Modifier.bouncyPress(canRoll)
                 ) {
                     Icon(Icons.Rounded.Casino, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))

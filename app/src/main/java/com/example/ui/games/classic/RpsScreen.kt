@@ -45,6 +45,8 @@ import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
 import com.example.ui.components.PassAndPlayTurnHeader
 import com.example.ui.components.PrivacyCurtainOverlay
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.springPop
 
 private enum class RpsChoice(val label: String, val icon: ImageVector) {
     ROCK("Rock", Icons.Rounded.RadioButtonChecked),
@@ -84,14 +86,14 @@ fun RpsScreen(
         when {
             c1 == c2 -> {
                 roundResult = "Tie — Both chose ${c1.label}"
-                onPlayCue(SoundCue.MOVE)
+                onPlayCue(SoundCue.BOUNCE)
             }
             (c1 == RpsChoice.ROCK && c2 == RpsChoice.SCISSORS) ||
                 (c1 == RpsChoice.PAPER && c2 == RpsChoice.ROCK) ||
                 (c1 == RpsChoice.SCISSORS && c2 == RpsChoice.PAPER) -> {
                 scores[0]++
                 roundResult = "${sessionConfig.players[0].name} wins round (${c1.label} beats ${c2.label})"
-                onPlayCue(SoundCue.TURN_PASS)
+                onPlayCue(SoundCue.TILE_MERGE)
             }
             else -> {
                 scores[1]++
@@ -150,13 +152,21 @@ fun RpsScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     if (roundResult != null) {
-                        Text("${p1Pick?.label}  vs  ${p2Pick?.label}", style = MaterialTheme.typography.headlineMedium)
+                        Text(
+                            "${p1Pick?.label}  vs  ${p2Pick?.label}",
+                            style = MaterialTheme.typography.headlineMedium,
+                            modifier = Modifier.springPop(roundResult, popScale = 1.18f)
+                        )
                         Spacer(Modifier.height(8.dp))
                         Text(roundResult!!, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(16.dp))
-                        Button(onClick = {
-                            p1Pick = null; p2Pick = null; roundResult = null
-                        }) {
+                        Button(
+                            onClick = {
+                                p1Pick = null; p2Pick = null; roundResult = null
+                                onPlayCue(SoundCue.KEY_TICK)
+                            },
+                            modifier = Modifier.bouncyPress()
+                        ) {
                             Text("Next Round")
                         }
                     } else {
@@ -180,8 +190,10 @@ fun RpsScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(130.dp)
+                                .bouncyPress()
                                 .clip(RoundedCornerShape(16.dp))
                                 .clickable {
+                                    onPlayCue(SoundCue.WOOD_TAP)
                                     if (sessionConfig.playMode == PlayMode.VS_AI) {
                                         resolveRound(choice, RpsChoice.entries.random())
                                     } else if (p1Pick == null) {

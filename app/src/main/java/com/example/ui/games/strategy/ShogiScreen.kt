@@ -45,6 +45,9 @@ import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
 import com.example.ui.components.PassAndPlayTurnHeader
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.springPop
 import kotlinx.coroutines.delay
 
 private enum class ShogiSide { SENTE, GOTE; fun opp() = if (this == SENTE) GOTE else SENTE }
@@ -151,7 +154,13 @@ fun ShogiScreen(
             if (moving.side == ShogiSide.SENTE) senteHand = senteHand + cap.type else goteHand = goteHand + cap.type
         }
         selectedSquare = null
-        onPlayCue(if (cap != null) SoundCue.CAPTURE else SoundCue.MOVE)
+        onPlayCue(
+            when {
+                canPromo -> SoundCue.BOUNCE
+                cap != null -> SoundCue.CAPTURE
+                else -> SoundCue.WOOD_TAP
+            }
+        )
         if (cap?.type == ShogiType.KING) {
             winner = moving.side
             onPlayCue(SoundCue.WIN)
@@ -167,7 +176,7 @@ fun ShogiScreen(
         board = next.map { it.toList() }
         if (turn == ShogiSide.SENTE) senteHand = senteHand - type else goteHand = goteHand - type
         selectedDrop = null
-        onPlayCue(SoundCue.MOVE)
+        onPlayCue(SoundCue.BOUNCE)
         turn = turn.opp()
     }
 
@@ -234,6 +243,7 @@ fun ShogiScreen(
                                         .aspectRatio(1f)
                                         .background(if (isSel) Color(0xFFC8A951) else if (isDest) Color(0xFFA5D6A7).copy(alpha = 0.5f) else Color.Transparent)
                                         .border(0.6.dp, Color(0xFF5D4037))
+                                        .bouncyPress(enabled = !isAiTurn && winner == null && (isDest || p?.side == turn))
                                         .clickable(enabled = !isAiTurn && winner == null) {
                                             if (selectedDrop != null && p == null) {
                                                 dropPiece(selectedDrop!!, r, c)
@@ -242,6 +252,7 @@ fun ShogiScreen(
                                             } else if (p?.side == turn) {
                                                 selectedDrop = null
                                                 selectedSquare = r to c
+                                                onPlayCue(SoundCue.KEY_TICK)
                                             }
                                         },
                                     contentAlignment = Alignment.Center
@@ -252,7 +263,10 @@ fun ShogiScreen(
                                             fontSize = 15.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = if (p.promoted) Color(0xFFB71C1C) else Color(0xFF1A1A1A),
-                                            modifier = Modifier.rotate(if (p.side == ShogiSide.GOTE) 180f else 0f)
+                                            modifier = Modifier
+                                                .springPop(p, popScale = 1.22f)
+                                                .pulseEffect(isSel, maxScale = 1.15f)
+                                                .rotate(if (p.side == ShogiSide.GOTE) 180f else 0f)
                                         )
                                     }
                                 }
@@ -277,10 +291,14 @@ fun ShogiScreen(
                 } else {
                     activeHand.distinct().forEach { t ->
                         Surface(
-                            modifier = Modifier.clickable(enabled = !isAiTurn) {
-                                selectedSquare = null
-                                selectedDrop = if (selectedDrop == t) null else t
-                            },
+                            modifier = Modifier
+                                .springPop(activeHand.count { it == t }, popScale = 1.12f)
+                                .bouncyPress(!isAiTurn)
+                                .clickable(enabled = !isAiTurn) {
+                                    selectedSquare = null
+                                    selectedDrop = if (selectedDrop == t) null else t
+                                    onPlayCue(SoundCue.KEY_TICK)
+                                },
                             shape = RoundedCornerShape(8.dp),
                             color = if (selectedDrop == t) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)

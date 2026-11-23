@@ -27,6 +27,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import com.example.data.repo.MatchOutcome
 import com.example.data.sound.SoundCue
 import com.example.domain.GameCatalog
@@ -36,6 +44,9 @@ import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
 import com.example.ui.components.MonoTag
 import com.example.ui.components.PassAndPlayTurnHeader
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import kotlinx.coroutines.delay
 
@@ -62,6 +73,7 @@ fun TriviaScreen(
     var secondsLeft by remember { mutableIntStateOf(15) }
     var totalElapsed by remember { mutableIntStateOf(0) }
     var finished by remember { mutableStateOf(false) }
+    var wrongShakeCount by remember { mutableIntStateOf(0) }
 
     fun resetQuiz() {
         questions = WordBank.triviaQuestions.shuffled().take(10)
@@ -81,9 +93,13 @@ fun TriviaScreen(
             totalElapsed++
             if (isBlitz) {
                 secondsLeft--
+                if (secondsLeft == 4) {
+                    onPlayCue(SoundCue.CHECK_ALERT)
+                }
                 if (secondsLeft <= 0) {
                     selectedOption = -1
                     streak = 0
+                    wrongShakeCount++
                     onPlayCue(SoundCue.ERROR)
                 }
             }
@@ -151,74 +167,91 @@ fun TriviaScreen(
             Spacer(Modifier.height(10.dp))
         }
 
-        MonoCard(elevated = true) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                MonoTag(text = currentQ.category)
-                Text(
-                    text = currentQ.prompt,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
-
-        Spacer(Modifier.height(14.dp))
-
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            currentQ.options.forEachIndexed { idx, opt ->
-                val revealed = selectedOption != null
-                val isCorrect = idx == currentQ.correctIndex
-                val isSelected = idx == selectedOption
-                val bg = when {
-                    revealed && isCorrect -> Color(0xFF1E4620)
-                    revealed && isSelected && !isCorrect -> Color(0xFF5A1E1E)
-                    else -> MaterialTheme.colorScheme.surface
-                }
-                val borderColor = when {
-                    revealed && isCorrect -> Color(0xFF66BB6A)
-                    revealed && isSelected && !isCorrect -> Color(0xFFEF5350)
-                    else -> MaterialTheme.colorScheme.outline
-                }
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable(enabled = !revealed && !finished) {
-                            selectedOption = idx
-                            if (isCorrect) {
-                                streak++
-                                val mult = if (isBlitz) streak.coerceAtMost(4) else 1
-                                val pts = (if (isBlitz) 100 + secondsLeft * 10 else 100) * mult
-                                scores[activeSeat] = scores[activeSeat] + pts
-                                onPlayCue(SoundCue.CAPTURE)
-                            } else {
-                                streak = 0
-                                onPlayCue(SoundCue.ERROR)
-                            }
-                        },
-                    shape = RoundedCornerShape(12.dp),
-                    color = bg,
-                    border = BorderStroke(1.2.dp, borderColor)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+        AnimatedContent(
+            targetState = qIndex,
+            transitionSpec = {
+                (slideInHorizontally { it / 3 } + fadeIn(tween(220)))
+                    .togetherWith(slideOutHorizontally { -it / 3 } + fadeOut(tween(160)))
+            },
+            label = "trivia_question"
+        ) { activeIdx ->
+            val q = questions[activeIdx]
+            Column(modifier = Modifier.fillMaxWidth().shakeOnTrigger(wrongShakeCount)) {
+                MonoCard(elevated = true) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        MonoTag(text = q.category)
                         Text(
-                            text = "${'A' + idx}.",
-                            fontFamily = JetBrainsMonoFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            text = q.prompt,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold
                         )
-                        Text(
-                            text = opt,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    q.options.forEachIndexed { idx, opt ->
+                        val revealed = selectedOption != null
+                        val isCorrect = idx == q.correctIndex
+                        val isSelected = idx == selectedOption
+                        val targetBg = when {
+                            revealed && isCorrect -> Color(0xFF1E4620)
+                            revealed && isSelected && !isCorrect -> Color(0xFF5A1E1E)
+                            else -> MaterialTheme.colorScheme.surface
+                        }
+                        val targetBorder = when {
+                            revealed && isCorrect -> Color(0xFF66BB6A)
+                            revealed && isSelected && !isCorrect -> Color(0xFFEF5350)
+                            else -> MaterialTheme.colorScheme.outline
+                        }
+                        val animBg by animateColorAsState(targetBg, tween(200), label = "trivia_opt_bg_$idx")
+                        val animBorder by animateColorAsState(targetBorder, tween(200), label = "trivia_opt_bd_$idx")
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .springPop(if (revealed && isCorrect) true else null, popScale = 1.05f)
+                                .bouncyPress(!revealed && !finished)
+                                .clickable(enabled = !revealed && !finished) {
+                                    selectedOption = idx
+                                    if (isCorrect) {
+                                        streak++
+                                        val mult = if (isBlitz) streak.coerceAtMost(4) else 1
+                                        val pts = (if (isBlitz) 100 + secondsLeft * 10 else 100) * mult
+                                        scores[activeSeat] = scores[activeSeat] + pts
+                                        onPlayCue(SoundCue.TILE_MERGE)
+                                    } else {
+                                        streak = 0
+                                        wrongShakeCount++
+                                        onPlayCue(SoundCue.ERROR)
+                                    }
+                                },
+                            shape = RoundedCornerShape(12.dp),
+                            color = animBg,
+                            border = BorderStroke(1.2.dp, animBorder)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = "${'A' + idx}.",
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = opt,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -226,7 +259,7 @@ fun TriviaScreen(
 
         if (selectedOption != null) {
             Spacer(Modifier.height(12.dp))
-            MonoCard {
+            MonoCard(modifier = Modifier.springPop(selectedOption, popScale = 1.04f)) {
                 Text(
                     text = currentQ.explanation,
                     modifier = Modifier.padding(12.dp),
@@ -236,8 +269,11 @@ fun TriviaScreen(
             }
             Spacer(Modifier.weight(1f))
             Button(
-                onClick = { nextQuestion() },
-                modifier = Modifier.fillMaxWidth().height(50.dp),
+                onClick = {
+                    onPlayCue(SoundCue.KEY_TICK)
+                    nextQuestion()
+                },
+                modifier = Modifier.fillMaxWidth().height(50.dp).bouncyPress(),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Text(if (qIndex + 1 >= questions.size) "See Results" else "Next Question")

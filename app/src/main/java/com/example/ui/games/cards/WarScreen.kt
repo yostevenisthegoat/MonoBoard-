@@ -28,6 +28,9 @@ import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
 import com.example.ui.components.PassAndPlayTurnHeader
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 
 @Composable
 fun WarScreen(
@@ -51,6 +54,7 @@ fun WarScreen(
     var p1Card by remember { mutableStateOf<PlayingCard?>(null) }
     var p2Card by remember { mutableStateOf<PlayingCard?>(null) }
     var rounds by remember { mutableIntStateOf(0) }
+    var warShakeCount by remember { mutableIntStateOf(0) }
     var statusText by remember { mutableStateOf("Tap Flip Cards to clash!") }
     var winnerSeat by remember { mutableStateOf<Int?>(null) }
     var recorded by remember { mutableStateOf(false) }
@@ -73,16 +77,17 @@ fun WarScreen(
             if (v1 > v2) {
                 d1.addAll(pot.shuffled())
                 statusText = "${sessionConfig.players[0].name} wins ${pot.size} cards (${c1.label} > ${c2.label})"
-                onPlayCue(SoundCue.MOVE)
+                onPlayCue(if (pot.size > 2) SoundCue.TILE_MERGE else SoundCue.CARD_FLIP)
                 break
             } else if (v2 > v1) {
                 d2.addAll(pot.shuffled())
                 statusText = "${sessionConfig.players[1].name} wins ${pot.size} cards (${c2.label} > ${c1.label})"
-                onPlayCue(SoundCue.CAPTURE)
+                onPlayCue(if (pot.size > 2) SoundCue.TILE_MERGE else SoundCue.CAPTURE)
                 break
             } else {
                 // WAR! Burn up to 2 cards each and draw again
-                onPlayCue(SoundCue.TURN_PASS)
+                warShakeCount++
+                onPlayCue(SoundCue.EXPLOSION)
                 repeat(2) {
                     if (d1.size > 1) pot.add(d1.removeAt(0))
                     if (d2.size > 1) pot.add(d2.removeAt(0))
@@ -108,6 +113,7 @@ fun WarScreen(
     fun restart() {
         split = splitDeck(); p1Card = null; p2Card = null; rounds = 0; winnerSeat = null; recorded = false
         statusText = "Tap Flip Cards to clash!"
+        onPlayCue(SoundCue.SHUFFLE)
     }
 
     GameScaffold(
@@ -126,7 +132,7 @@ fun WarScreen(
         )
         Spacer(Modifier.height(20.dp))
 
-        MonoCard(elevated = true, modifier = Modifier.fillMaxWidth().weight(1f)) {
+        MonoCard(elevated = true, modifier = Modifier.fillMaxWidth().weight(1f).shakeOnTrigger(warShakeCount)) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(24.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -134,13 +140,13 @@ fun WarScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(sessionConfig.players[0].name, style = MaterialTheme.typography.titleMedium)
-                    PlayingCardView(p1Card, width = 88.dp, height = 124.dp)
+                    PlayingCardView(p1Card, width = 88.dp, height = 124.dp, modifier = Modifier.springPop(rounds, popScale = 1.1f))
                     Text("${p1Deck.size} cards", style = MaterialTheme.typography.labelSmall)
                 }
-                Text("VS", style = MaterialTheme.typography.headlineMedium)
+                Text("VS", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.springPop(rounds, popScale = 1.25f))
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(sessionConfig.players[1].name, style = MaterialTheme.typography.titleMedium)
-                    PlayingCardView(p2Card, width = 88.dp, height = 124.dp)
+                    PlayingCardView(p2Card, width = 88.dp, height = 124.dp, modifier = Modifier.springPop(rounds, popScale = 1.1f))
                     Text("${p2Deck.size} cards", style = MaterialTheme.typography.labelSmall)
                 }
             }
@@ -150,7 +156,7 @@ fun WarScreen(
         Button(
             onClick = ::flipClash,
             enabled = winnerSeat == null,
-            modifier = Modifier.fillMaxWidth().height(52.dp)
+            modifier = Modifier.fillMaxWidth().height(52.dp).bouncyPress(enabled = winnerSeat == null)
         ) { Text("Flip Cards") }
     }
 

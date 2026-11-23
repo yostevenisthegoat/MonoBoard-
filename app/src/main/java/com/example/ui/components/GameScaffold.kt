@@ -200,21 +200,27 @@ fun GameCompletionDialog(
         onDismissRequest = onExit,
         containerColor = MaterialTheme.colorScheme.surface,
         icon = {
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.primary,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-            ) {
-                Box(
-                    modifier = Modifier.size(52.dp),
-                    contentAlignment = Alignment.Center
+            Box(contentAlignment = Alignment.Center) {
+                ConfettiBurstOverlay(modifier = Modifier.size(160.dp))
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier
+                        .springPop(title, popScale = 1.32f)
+                        .pulseEffect(active = true, maxScale = 1.06f)
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.EmojiEvents,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(28.dp)
-                    )
+                    Box(
+                        modifier = Modifier.size(52.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.EmojiEvents,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
                 }
             }
         },
@@ -222,7 +228,8 @@ fun GameCompletionDialog(
             Text(
                 text = title,
                 style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.springPop(title, popScale = 1.08f)
             )
         },
         text = {
@@ -236,6 +243,7 @@ fun GameCompletionDialog(
             Button(
                 onClick = onPlayAgain,
                 shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.bouncyPress(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary
@@ -247,7 +255,8 @@ fun GameCompletionDialog(
         dismissButton = {
             OutlinedButton(
                 onClick = onExit,
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.bouncyPress()
             ) {
                 Text("Back to Hub")
             }

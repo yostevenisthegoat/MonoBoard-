@@ -29,12 +29,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.mutableIntStateOf
 import com.example.data.repo.MatchOutcome
 import com.example.data.sound.SoundCue
 import com.example.domain.GameCatalog
 import com.example.domain.GameSessionConfig
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import kotlin.math.abs
 
@@ -105,6 +110,7 @@ fun KenKenScreen(
     var entries by remember(puzzle) { mutableStateOf(List(dim) { List(dim) { 0 } }) }
     var selected by remember { mutableStateOf<Pair<Int, Int>?>(0 to 0) }
     var recorded by remember { mutableStateOf(false) }
+    var conflictShakeCount by remember { mutableIntStateOf(0) }
 
     val cageByCell = remember(puzzle) {
         val m = mutableMapOf<Pair<Int, Int>, KenCage>()
@@ -159,7 +165,7 @@ fun KenKenScreen(
         onRestart = ::restart
     ) {
         Surface(
-            modifier = Modifier.fillMaxWidth().weight(1f),
+            modifier = Modifier.fillMaxWidth().weight(1f).shakeOnTrigger(conflictShakeCount),
             shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surface,
             border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline)
@@ -176,14 +182,20 @@ fun KenKenScreen(
                                 (cage?.id ?: 0) % 2 == 0 -> MaterialTheme.colorScheme.surfaceVariant
                                 else -> MaterialTheme.colorScheme.background
                             }
+                            val v = entries[r][c]
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
                                     .aspectRatio(1f)
                                     .padding(1.dp)
+                                    .springPop(if (v != 0) v else null, popScale = 1.18f)
+                                    .pulseEffect(isSel && !solved, maxScale = 1.06f)
                                     .background(bg, RoundedCornerShape(8.dp))
                                     .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
-                                    .clickable(enabled = !solved) { selected = r to c },
+                                    .clickable(enabled = !solved) {
+                                        selected = r to c
+                                        onPlayCue(SoundCue.KEY_TICK)
+                                    },
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (label != null) {
@@ -218,13 +230,40 @@ fun KenKenScreen(
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             (1..dim).forEach { d ->
                 Surface(
-                    modifier = Modifier.weight(1f).height(52.dp).clickable(enabled = selected != null && !solved) {
-                        val (sr, sc) = selected!!
-                        val next = entries.map { it.toMutableList() }
-                        next[sr][sc] = if (next[sr][sc] == d) 0 else d
-                        entries = next.map { it.toList() }
-                        onPlayCue(SoundCue.MOVE)
-                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(52.dp)
+                        .bouncyPress(selected != null && !solved)
+                        .clickable(enabled = selected != null && !solved) {
+                            val (sr, sc) = selected!!
+                            val next = entries.map { it.toMutableList() }
+                            val newVal = if (next[sr][sc] == d) 0 else d
+                            next[sr][sc] = newVal
+                            val updated = next.map { it.toList() }
+                            entries = updated
+                            val rowDup = newVal != 0 && (0 until dim).any { c -> c != sc && updated[sr][c] == newVal }
+                            val colDup = newVal != 0 && (0 until dim).any { r -> r != sr && updated[r][sc] == newVal }
+                            val cage = cageByCell[sr to sc]
+                            val cageOk = cage != null && cage.cells.all { (cr, cc) -> updated[cr][cc] != 0 } && run {
+                                val vals = cage.cells.map { (cr, cc) -> updated[cr][cc] }
+                                when (cage.op) {
+                                    '=' -> vals[0] == cage.target
+                                    '+' -> vals.sum() == cage.target
+                                    '×' -> vals.fold(1) { acc, x -> acc * x } == cage.target
+                                    '−' -> abs(vals[0] - vals[1]) == cage.target
+                                    '÷' -> maxOf(vals[0], vals[1]) / minOf(vals[0], vals[1]) == cage.target && maxOf(vals[0], vals[1]) % minOf(vals[0], vals[1]) == 0
+                                    else -> false
+                                }
+                            }
+                            if (rowDup || colDup) {
+                                conflictShakeCount++
+                                onPlayCue(SoundCue.ERROR)
+                            } else if (newVal != 0 && cageOk) {
+                                onPlayCue(SoundCue.TILE_MERGE)
+                            } else {
+                                onPlayCue(SoundCue.KEY_TICK)
+                            }
+                        },
                     shape = RoundedCornerShape(10.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)

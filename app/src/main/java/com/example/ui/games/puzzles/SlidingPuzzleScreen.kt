@@ -31,6 +31,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import com.example.data.repo.MatchOutcome
 import com.example.data.sound.SoundCue
 import com.example.domain.GameCatalog
@@ -38,6 +40,9 @@ import com.example.domain.GameSessionConfig
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.StatMetricTile
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import kotlinx.coroutines.delay
 
@@ -74,6 +79,7 @@ fun SlidingPuzzleScreen(
     var moves by remember { mutableIntStateOf(0) }
     var elapsed by remember { mutableIntStateOf(0) }
     var recorded by remember { mutableStateOf(false) }
+    var errorShakeCount by remember { mutableIntStateOf(0) }
 
     val solved = remember(tiles) {
         (0 until dim * dim - 1).all { tiles[it] == it + 1 } && tiles.last() == 0
@@ -102,11 +108,15 @@ fun SlidingPuzzleScreen(
         val r2 = blankIdx / dim; val c2 = blankIdx % dim
         if (kotlin.math.abs(r1 - r2) + kotlin.math.abs(c1 - c2) == 1) {
             val next = tiles.toMutableList()
-            next[blankIdx] = next[index]
+            val movedTile = next[index]
+            next[blankIdx] = movedTile
             next[index] = 0
             tiles = next
             moves++
-            onPlayCue(SoundCue.MOVE)
+            onPlayCue(if (movedTile == blankIdx + 1) SoundCue.TILE_MERGE else SoundCue.PIECE_SLIDE)
+        } else {
+            errorShakeCount++
+            onPlayCue(SoundCue.ERROR)
         }
     }
 
@@ -130,7 +140,7 @@ fun SlidingPuzzleScreen(
         BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
             val size = minOf(maxWidth, maxHeight, 360.dp)
             Surface(
-                modifier = Modifier.size(size),
+                modifier = Modifier.size(size).shakeOnTrigger(errorShakeCount),
                 shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline)
@@ -141,16 +151,20 @@ fun SlidingPuzzleScreen(
                             for (c in 0 until dim) {
                                 val idx = r * dim + c
                                 val v = tiles[idx]
+                                val targetColor = if (v == 0) MaterialTheme.colorScheme.background
+                                else if (v == idx + 1) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.surfaceVariant
+                                val tileColor by animateColorAsState(targetColor, tween(180), label = "slide_col_$idx")
                                 Surface(
                                     modifier = Modifier
                                         .weight(1f)
                                         .aspectRatio(1f)
+                                        .springPop(if (v > 0) v else null, popScale = 1.12f)
+                                        .bouncyPress(v != 0 && !solved)
                                         .clip(RoundedCornerShape(12.dp))
                                         .clickable(enabled = v != 0 && !solved) { tapTile(idx) },
                                     shape = RoundedCornerShape(12.dp),
-                                    color = if (v == 0) MaterialTheme.colorScheme.background
-                                    else if (v == idx + 1) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.surfaceVariant,
+                                    color = tileColor,
                                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {

@@ -36,6 +36,7 @@ import com.example.domain.GameSessionConfig
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.PassAndPlayTurnHeader
+import com.example.ui.components.springPop
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 
@@ -110,9 +111,9 @@ fun DotsBoxesScreen(
         boxes = nextB
         if (claimed > 0) {
             scores[activeSeat] += claimed
-            onPlayCue(SoundCue.TURN_PASS)
+            onPlayCue(SoundCue.TILE_MERGE)
         } else {
-            onPlayCue(SoundCue.MOVE)
+            onPlayCue(SoundCue.KEY_TICK)
             activeSeat = (activeSeat + 1) % sessionConfig.players.size
         }
     }
@@ -192,8 +193,11 @@ fun DotsBoxesScreen(
             contentAlignment = Alignment.Center
         ) {
             val size = minOf(maxWidth, maxHeight, 360.dp)
+            val totalClaimed = boxes.sumOf { row -> row.count { it != -1 } }
             Surface(
-                modifier = Modifier.size(size),
+                modifier = Modifier
+                    .size(size)
+                    .springPop(totalClaimed, popScale = 1.04f),
                 shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline)

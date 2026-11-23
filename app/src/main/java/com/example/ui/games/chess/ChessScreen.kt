@@ -55,6 +55,9 @@ import com.example.ui.components.AvatarBadge
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.springPop
 import com.example.ui.theme.BoardTheme
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.PieceTheme
@@ -134,7 +137,12 @@ fun ChessScreen(
                 val hadCap = currentState.board[best.toRow][best.toCol] != null || best.isEnPassant
                 undoStack.add(currentState)
                 currentState = ChessEngine.applyMove(currentState, best)
-                onPlayCue(if (hadCap) SoundCue.CAPTURE else SoundCue.MOVE)
+                val cue = when {
+                    currentState.status == ChessGameStatus.CHECK -> SoundCue.CHECK_ALERT
+                    hadCap -> SoundCue.CAPTURE
+                    else -> SoundCue.WOOD_TAP
+                }
+                onPlayCue(cue)
                 onSaveState(ChessEngine.serialize(currentState), "${currentState.moveHistory.size} moves")
             }
             aiThinking = false
@@ -170,7 +178,12 @@ fun ChessScreen(
         currentState = ChessEngine.applyMove(currentState, move)
         selectedSquare = null
         legalTargets = emptyList()
-        onPlayCue(if (hadCap) SoundCue.CAPTURE else SoundCue.MOVE)
+        val cue = when {
+            currentState.status == ChessGameStatus.CHECK -> SoundCue.CHECK_ALERT
+            hadCap -> SoundCue.CAPTURE
+            else -> SoundCue.WOOD_TAP
+        }
+        onPlayCue(cue)
         onSaveState(ChessEngine.serialize(currentState), "${currentState.moveHistory.size} moves")
     }
 
@@ -291,6 +304,7 @@ fun ChessScreen(
                                             } else if (piece != null && piece.color == currentState.turn) {
                                                 selectedSquare = r to c
                                                 legalTargets = ChessEngine.legalMovesForSquare(currentState, r, c)
+                                                onPlayCue(SoundCue.KEY_TICK)
                                             } else {
                                                 selectedSquare = null
                                                 legalTargets = emptyList()
@@ -299,12 +313,16 @@ fun ChessScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     if (piece != null) {
+                                        val isMovedTarget = currentState.lastMove?.let { it.toRow == r && it.toCol == c } ?: false
                                         Text(
                                             text = pieceGlyph(piece, activePieceTheme),
                                             fontSize = (boardSize.value / 11.5f).sp,
                                             fontWeight = if (activePieceTheme == PieceTheme.HIGH_CONTRAST) FontWeight.Bold else FontWeight.Normal,
                                             color = if (piece.color == PieceColor.WHITE) Color(0xFFFFFFFF) else Color(0xFF111111),
-                                            textAlign = TextAlign.Center
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier
+                                                .springPop(if (isMovedTarget) currentState.moveHistory.size else null, popScale = 1.24f)
+                                                .pulseEffect(active = isKingCheck || isSelected, maxScale = 1.12f)
                                         )
                                     }
                                     if (isLegalDest && settings.showLegalMoves) {
@@ -312,6 +330,7 @@ fun ChessScreen(
                                             Box(
                                                 modifier = Modifier
                                                     .size(11.dp)
+                                                    .pulseEffect(active = true, maxScale = 1.22f)
                                                     .clip(CircleShape)
                                                     .background(Color.Black.copy(alpha = 0.35f))
                                             )
@@ -320,6 +339,7 @@ fun ChessScreen(
                                                 modifier = Modifier
                                                     .fillMaxSize()
                                                     .padding(2.dp)
+                                                    .pulseEffect(active = true, maxScale = 1.07f)
                                                     .border(2.5.dp, Color.Black.copy(alpha = 0.45f), CircleShape)
                                             )
                                         }
@@ -410,6 +430,7 @@ fun ChessScreen(
                         Surface(
                             modifier = Modifier
                                 .size(56.dp)
+                                .bouncyPress()
                                 .clip(RoundedCornerShape(12.dp))
                                 .clickable {
                                     pendingPromotionMoves = null

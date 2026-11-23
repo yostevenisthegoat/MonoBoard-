@@ -52,6 +52,10 @@ import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
 import com.example.ui.components.PassAndPlayTurnHeader
 import com.example.ui.components.PrivacyCurtainOverlay
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 import kotlinx.coroutines.delay
 
 private enum class BattlePhase {
@@ -108,6 +112,7 @@ fun BattleshipScreen(
     var lastStatus by remember { mutableStateOf("Place Carrier (5 cells)") }
     var turnShotFired by remember { mutableStateOf(false) }
     var winnerSeat by remember { mutableStateOf<Int?>(null) }
+    var hitShakeCount by remember { mutableIntStateOf(0) }
     var elapsed by remember { mutableIntStateOf(0) }
     var recorded by remember { mutableStateOf(false) }
 
@@ -156,7 +161,12 @@ fun BattleshipScreen(
                 val nextShots = p2Shots.map { it.toMutableList() }
                 nextShots[tr][tc] = if (hit) ShotState.HIT else ShotState.MISS
                 p2Shots = nextShots.map { it.toList() }
-                onPlayCue(if (hit) SoundCue.CAPTURE else SoundCue.MOVE)
+                if (hit) {
+                    hitShakeCount++
+                    onPlayCue(SoundCue.EXPLOSION)
+                } else {
+                    onPlayCue(SoundCue.SPLASH)
+                }
                 lastStatus = if (hit) "Mono AI scored a HIT at ${'A' + tc}${tr + 1}!" else "Mono AI missed at ${'A' + tc}${tr + 1}."
                 if (countHits(p2Shots) >= totalShipCells) {
                     winnerSeat = 1
@@ -179,7 +189,7 @@ fun BattleshipScreen(
         val next = fleet.map { it.toMutableList() }
         cells.forEach { (nr, nc) -> next[nr][nc] = placingShipIdx }
         if (phase == BattlePhase.PLACE_P1) p1Fleet = next.map { it.toList() } else p2Fleet = next.map { it.toList() }
-        onPlayCue(SoundCue.MOVE)
+        onPlayCue(SoundCue.WOOD_TAP)
         placingShipIdx++
         if (placingShipIdx >= shipSizes.size) {
             if (phase == BattlePhase.PLACE_P1) {
@@ -213,7 +223,12 @@ fun BattleshipScreen(
         val next = myShots.map { it.toMutableList() }
         next[r][c] = if (hit) ShotState.HIT else ShotState.MISS
         if (activeSeat == 0) p1Shots = next.map { it.toList() } else p2Shots = next.map { it.toList() }
-        onPlayCue(if (hit) SoundCue.CAPTURE else SoundCue.MOVE)
+        if (hit) {
+            hitShakeCount++
+            onPlayCue(SoundCue.EXPLOSION)
+        } else {
+            onPlayCue(SoundCue.SPLASH)
+        }
         lastStatus = if (hit) "DIRECT HIT at ${'A' + c}${r + 1}!" else "Splash! Miss at ${'A' + c}${r + 1}."
 
         val updatedShots = if (activeSeat == 0) p1Shots else p2Shots
@@ -330,7 +345,9 @@ fun BattleshipScreen(
             ) {
                 val gridW = minOf(maxWidth, maxHeight, 360.dp)
                 Surface(
-                    modifier = Modifier.size(gridW),
+                    modifier = Modifier
+                        .size(gridW)
+                        .shakeOnTrigger(hitShakeCount),
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline)
@@ -368,6 +385,8 @@ fun BattleshipScreen(
                                             Box(
                                                 modifier = Modifier
                                                     .size(10.dp)
+                                                    .springPop(shot, popScale = 1.45f)
+                                                    .pulseEffect(active = shot == ShotState.HIT, maxScale = 1.2f)
                                                     .clip(CircleShape)
                                                     .background(if (shot == ShotState.HIT) Color.White else MaterialTheme.colorScheme.onSurfaceVariant)
                                             )

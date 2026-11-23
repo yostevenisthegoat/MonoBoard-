@@ -42,6 +42,8 @@ import com.example.domain.PlayMode
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 
 private data class MastermindGuess(
@@ -187,7 +189,12 @@ fun MastermindScreen(
                         for (i in 0..3) {
                             PegToken(
                                 peg = currentDraft[i],
-                                onClick = { if (!won && !lost) currentDraft[i] = (currentDraft[i] + 1) % 6 }
+                                onClick = {
+                                    if (!won && !lost) {
+                                        currentDraft[i] = (currentDraft[i] + 1) % 6
+                                        onPlayCue(SoundCue.KEY_TICK)
+                                    }
+                                }
                             )
                         }
                     }
@@ -197,12 +204,12 @@ fun MastermindScreen(
                             val attempt = currentDraft.toList()
                             val (ex, pa) = evaluate(attempt, secretCode)
                             guesses.add(MastermindGuess(attempt, ex, pa))
-                            onPlayCue(SoundCue.MOVE)
+                            onPlayCue(if (ex > 0) SoundCue.TILE_MERGE else SoundCue.WOOD_TAP)
                             if (ex == 4) won = true
                             else if (guesses.size >= 10) lost = true
                         },
                         enabled = !won && !lost,
-                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                        modifier = Modifier.fillMaxWidth().height(48.dp).bouncyPress(enabled = !won && !lost)
                     ) {
                         Text("Submit Guess (${guesses.size}/10) — Tap pegs to cycle")
                     }
@@ -226,6 +233,8 @@ private fun PegToken(peg: Int, onClick: (() -> Unit)?) {
     Surface(
         modifier = Modifier
             .size(44.dp)
+            .springPop(peg, popScale = 1.18f)
+            .then(if (onClick != null) Modifier.bouncyPress() else Modifier)
             .clip(CircleShape)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         shape = CircleShape,

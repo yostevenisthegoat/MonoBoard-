@@ -39,9 +39,18 @@ import com.example.domain.AiDifficulty
 import com.example.domain.GameCatalog
 import com.example.domain.GameSessionConfig
 import com.example.domain.PlayMode
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.PassAndPlayTurnHeader
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.springPop
 import kotlinx.coroutines.delay
 
 @Composable
@@ -102,15 +111,17 @@ fun TicTacToeScreen(
         if (board[idx].isNotEmpty() || winnerSeat != null || isDraw) return
         val symbol = if (activeSeat == 0) "X" else "O"
         board[idx] = symbol
-        onPlayCue(SoundCue.MOVE)
         val (w, line) = checkWinner(board)
         if (w != null) {
             winLine = line
             winnerSeat = activeSeat
             scores[activeSeat]++
+            onPlayCue(SoundCue.TILE_MERGE)
         } else if (board.none { it.isEmpty() }) {
             isDraw = true
+            onPlayCue(SoundCue.WOOD_TAP)
         } else {
+            onPlayCue(SoundCue.WOOD_TAP)
             activeSeat = 1 - activeSeat
         }
     }
@@ -199,40 +210,70 @@ fun TicTacToeScreen(
             contentAlignment = Alignment.Center
         ) {
             val size = minOf(maxWidth, maxHeight, 360.dp)
-            Column(
-                modifier = Modifier.size(size),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                for (r in 0..2) {
-                    Row(
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        for (c in 0..2) {
-                            val idx = r * 3 + c
-                            val isWinning = idx in winLine
-                            Surface(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .aspectRatio(1f)
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .clickable(enabled = !isAiTurn && board[idx].isEmpty() && winnerSeat == null && !isDraw) {
-                                        playMove(idx)
-                                    },
-                                shape = RoundedCornerShape(16.dp),
-                                color = if (isWinning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-                                border = BorderStroke(1.5.dp, if (isWinning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = board[idx],
-                                        fontSize = 46.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isWinning) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                                    )
+            Box(modifier = Modifier.size(size)) {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    for (r in 0..2) {
+                        Row(
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            for (c in 0..2) {
+                                val idx = r * 3 + c
+                                val isWinning = idx in winLine
+                                val cellSymbol = board[idx]
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .aspectRatio(1f)
+                                        .bouncyPress(enabled = !isAiTurn && cellSymbol.isEmpty() && winnerSeat == null && !isDraw)
+                                        .pulseEffect(active = isWinning, maxScale = 1.06f)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .clickable(enabled = !isAiTurn && cellSymbol.isEmpty() && winnerSeat == null && !isDraw) {
+                                            playMove(idx)
+                                        },
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = if (isWinning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                                    border = BorderStroke(1.5.dp, if (isWinning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = cellSymbol,
+                                            fontSize = 46.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isWinning) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.springPop(cellSymbol.ifEmpty { null }, popScale = 1.32f)
+                                        )
+                                    }
                                 }
                             }
                         }
+                    }
+                }
+                if (winLine.size == 3) {
+                    val strikeProgress = remember(winLine) { Animatable(0f) }
+                    val strikeColor = MaterialTheme.colorScheme.onSurface
+                    LaunchedEffect(winLine) {
+                        strikeProgress.animateTo(1f, tween(340, easing = FastOutSlowInEasing))
+                    }
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val a = winLine.first()
+                        val b = winLine.last()
+                        val start = Offset(((a % 3) + 0.5f) * (this.size.width / 3f), ((a / 3) + 0.5f) * (this.size.height / 3f))
+                        val end = Offset(((b % 3) + 0.5f) * (this.size.width / 3f), ((b / 3) + 0.5f) * (this.size.height / 3f))
+                        val cur = Offset(
+                            start.x + (end.x - start.x) * strikeProgress.value,
+                            start.y + (end.y - start.y) * strikeProgress.value
+                        )
+                        drawLine(
+                            color = strikeColor.copy(alpha = 0.7f),
+                            start = start,
+                            end = cur,
+                            strokeWidth = 7.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
                     }
                 }
             }

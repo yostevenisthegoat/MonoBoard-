@@ -48,9 +48,13 @@ import com.example.data.repo.MatchOutcome
 import com.example.data.sound.SoundCue
 import com.example.domain.GameCatalog
 import com.example.domain.GameSessionConfig
+import com.example.ui.components.FlipCardBox
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.PassAndPlayTurnHeader
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -105,6 +109,7 @@ fun MemoryMatchScreen(
         mutableStateListOf<Int>().apply { repeat(sessionConfig.players.size) { add(0) } }
     }
     var moves by remember { mutableIntStateOf(0) }
+    var mismatchShakeCount by remember { mutableIntStateOf(0) }
     var elapsed by remember { mutableIntStateOf(0) }
     var recorded by remember { mutableStateOf(false) }
 
@@ -133,7 +138,7 @@ fun MemoryMatchScreen(
         val next = cards.toMutableList()
         next[index] = next[index].copy(faceUp = true)
         cards = next
-        onPlayCue(SoundCue.MOVE)
+        onPlayCue(SoundCue.CARD_FLIP)
 
         val first = firstPick
         if (first == null) {
@@ -147,11 +152,14 @@ fun MemoryMatchScreen(
                 cards = matched
                 scores[activeSeat]++
                 firstPick = null
-                onPlayCue(SoundCue.TURN_PASS)
+                onPlayCue(SoundCue.TILE_MERGE)
             } else {
                 lockInput = true
                 scope.launch {
-                    delay(650L)
+                    delay(280L)
+                    mismatchShakeCount++
+                    onPlayCue(SoundCue.ERROR)
+                    delay(420L)
                     val reset = cards.toMutableList()
                     reset[first] = reset[first].copy(faceUp = false)
                     reset[index] = reset[index].copy(faceUp = false)
@@ -170,7 +178,8 @@ fun MemoryMatchScreen(
         cards = buildDeck()
         firstPick = null; lockInput = false; activeSeat = 0
         for (i in scores.indices) scores[i] = 0
-        moves = 0; elapsed = 0; recorded = false
+        moves = 0; mismatchShakeCount = 0; elapsed = 0; recorded = false
+        onPlayCue(SoundCue.SHUFFLE)
     }
 
     GameScaffold(
@@ -191,7 +200,10 @@ fun MemoryMatchScreen(
         }
 
         Column(
-            modifier = Modifier.fillMaxWidth().weight(1f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .shakeOnTrigger(mismatchShakeCount),
             verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
         ) {
             for (r in 0 until rows) {
@@ -202,33 +214,45 @@ fun MemoryMatchScreen(
                     for (c in 0 until cols) {
                         val idx = r * cols + c
                         val card = cards[idx]
-                        Surface(
+                        FlipCardBox(
+                            faceUp = card.faceUp || card.matched,
                             modifier = Modifier
                                 .weight(1f)
                                 .aspectRatio(1f)
+                                .bouncyPress(enabled = !lockInput && !card.faceUp && !card.matched)
+                                .springPop(if (card.matched) card.id else null, popScale = 1.18f)
                                 .clip(RoundedCornerShape(12.dp))
                                 .clickable { flipCard(idx) },
-                            shape = RoundedCornerShape(12.dp),
-                            color = when {
-                                card.matched -> MaterialTheme.colorScheme.primary
-                                card.faceUp -> MaterialTheme.colorScheme.surfaceVariant
-                                else -> MaterialTheme.colorScheme.surface
+                            front = {
+                                Surface(
+                                    modifier = Modifier.fillMaxSize(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (card.matched) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                        Icon(
+                                            imageVector = memoryIcons[card.pairId % memoryIcons.size],
+                                            contentDescription = "Card symbol",
+                                            tint = if (card.matched) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(28.dp)
+                                        )
+                                    }
+                                }
                             },
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                        ) {
-                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                if (card.faceUp || card.matched) {
-                                    Icon(
-                                        imageVector = memoryIcons[card.pairId % memoryIcons.size],
-                                        contentDescription = "Card symbol",
-                                        tint = if (card.matched) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.size(28.dp)
-                                    )
-                                } else {
-                                    Text("?", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            back = {
+                                Surface(
+                                    modifier = Modifier.fillMaxSize(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                        Text("?", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
                                 }
                             }
-                        }
+                        )
                     }
                 }
             }

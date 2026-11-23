@@ -32,6 +32,8 @@ import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
 import com.example.ui.components.PassAndPlayTurnHeader
 import com.example.ui.components.PrivacyCurtainOverlay
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 import kotlinx.coroutines.delay
 
 @Composable
@@ -64,6 +66,7 @@ fun TrickTakingScreen(
     var showCurtain by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("Lead a card to start the trick.") }
     var gameOver by remember { mutableStateOf(false) }
+    var queenShakeCount by remember { mutableIntStateOf(0) }
     var recorded by remember { mutableStateOf(false) }
 
     fun legalCards(hand: List<PlayingCard>): List<PlayingCard> {
@@ -93,10 +96,17 @@ fun TrickTakingScreen(
         if (gameOver) return
         val nextHands = hands.mapIndexed { idx, h -> if (idx == activeSeat) h - card else h }
         val nextTrick = currentTrick + (activeSeat to card)
+        val brokeHeartsNow = isHearts && !heartsBroken && card.suit == Suit.HEARTS
         if (card.suit == Suit.HEARTS) heartsBroken = true
         hands = nextHands
         currentTrick = nextTrick
-        onPlayCue(SoundCue.MOVE)
+        val isQueenSpades = isHearts && card.suit == Suit.SPADES && card.rank == Rank.QUEEN
+        if (isQueenSpades || brokeHeartsNow) {
+            queenShakeCount++
+            onPlayCue(SoundCue.EXPLOSION)
+        } else {
+            onPlayCue(SoundCue.CARD_FLIP)
+        }
 
         if (nextTrick.size == 4) {
             val winner = trickWinner(nextTrick)
@@ -115,6 +125,7 @@ fun TrickTakingScreen(
             statusText = "${sessionConfig.players[winner].name} won the trick (+$points pts)"
             currentTrick = emptyList()
             activeSeat = winner
+            onPlayCue(SoundCue.TILE_MERGE)
             if (nextHands.all { it.isEmpty() }) {
                 if (isHearts) {
                     // Shoot the moon check
@@ -167,6 +178,7 @@ fun TrickTakingScreen(
         hands = deal(); for (i in 0..3) scores[i] = 0; currentTrick = emptyList()
         activeSeat = 0; heartsBroken = false; showCurtain = false; gameOver = false; recorded = false
         statusText = "Lead a card to start the trick."
+        onPlayCue(SoundCue.SHUFFLE)
     }
 
     GameScaffold(
@@ -192,7 +204,7 @@ fun TrickTakingScreen(
             )
             Spacer(Modifier.height(14.dp))
 
-            MonoCard(elevated = true, modifier = Modifier.fillMaxWidth().weight(1f)) {
+            MonoCard(elevated = true, modifier = Modifier.fillMaxWidth().weight(1f).shakeOnTrigger(queenShakeCount)) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -202,7 +214,11 @@ fun TrickTakingScreen(
                     Spacer(Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         currentTrick.forEach { (seat, card) ->
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.springPop(card.label, popScale = 1.15f)
+                            ) {
                                 PlayingCardView(card, width = 62.dp, height = 88.dp)
                                 Text(sessionConfig.players[seat].name.take(8), style = MaterialTheme.typography.labelSmall)
                             }

@@ -37,10 +37,13 @@ import com.example.domain.AiDifficulty
 import com.example.domain.GameCatalog
 import com.example.domain.GameSessionConfig
 import com.example.domain.PlayMode
+import androidx.compose.animation.animateContentSize
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
 import com.example.ui.components.PassAndPlayTurnHeader
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import kotlinx.coroutines.delay
 
@@ -66,7 +69,7 @@ fun NimScreen(
     fun takeFromHeap(heapIdx: Int, count: Int) {
         if (winnerSeat != null || count <= 0 || count > heaps[heapIdx]) return
         heaps[heapIdx] -= count
-        onPlayCue(SoundCue.MOVE)
+        onPlayCue(SoundCue.PIECE_SLIDE)
         if (heaps.all { it == 0 }) {
             winnerSeat = if (misere) 1 - activeSeat else activeSeat
         } else {
@@ -145,15 +148,20 @@ fun NimScreen(
                 MonoCard(
                     elevated = selected,
                     borderHighlight = selected,
+                    modifier = Modifier.springPop(count, popScale = 1.05f),
                     onClick = {
                         if (count > 0 && !isAiTurn) {
                             selectedHeap = idx
                             removeCount = removeCount.coerceIn(1, count)
+                            onPlayCue(SoundCue.KEY_TICK)
                         }
                     }
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .animateContentSize()
+                            .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -163,6 +171,7 @@ fun NimScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(18.dp)
+                                        .springPop(count, popScale = 1.15f)
                                         .clip(CircleShape)
                                         .background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                                 )
@@ -188,8 +197,9 @@ fun NimScreen(
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(44.dp)
+                                    .bouncyPress()
                                     .clip(RoundedCornerShape(10.dp))
-                                    .clickable { removeCount = amt },
+                                    .clickable { removeCount = amt; onPlayCue(SoundCue.KEY_TICK) },
                                 color = if (removeCount == amt) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
                                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                             ) {
@@ -205,7 +215,7 @@ fun NimScreen(
                     }
                     Button(
                         onClick = { takeFromHeap(selectedHeap, removeCount) },
-                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                        modifier = Modifier.fillMaxWidth().height(48.dp).bouncyPress()
                     ) { Text("Confirm Move") }
                 }
             }

@@ -52,13 +52,22 @@ import com.example.data.repo.MatchOutcome
 import com.example.data.sound.SoundCue
 import com.example.domain.GameCatalog
 import com.example.domain.GameSessionConfig
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.IntOffset
+import com.example.ui.components.AnimatedDieView
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
 import com.example.ui.components.PassAndPlayTurnHeader
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 private val ladders = mapOf(
     4 to 25,
@@ -136,13 +145,11 @@ fun SnakesLaddersScreen(
         val player = sessionConfig.players[seat]
         scope.launch {
             isRolling = true
-            repeat(6) {
-                diceValue = (1..6).random()
-                delay(65L)
-            }
+            onPlayCue(SoundCue.DICE_ROLL)
+            delay(340L)
             val roll = (1..6).random()
             diceValue = roll
-            onPlayCue(SoundCue.MOVE)
+            isRolling = false
 
             val startPos = positions[seat]
             var target = startPos + roll
@@ -156,7 +163,8 @@ fun SnakesLaddersScreen(
                 while (cursor != target) {
                     cursor += step
                     positions[seat] = cursor
-                    delay(120L)
+                    onPlayCue(SoundCue.WOOD_TAP)
+                    delay(125L)
                 }
             }
 
@@ -165,15 +173,17 @@ fun SnakesLaddersScreen(
             when {
                 ladderDest != null -> {
                     statusText = "${player.name} rolled $roll and climbed ladder ${positions[seat]} → $ladderDest!"
-                    onPlayCue(SoundCue.TURN_PASS)
-                    delay(240L)
+                    onPlayCue(SoundCue.BOUNCE)
+                    delay(220L)
                     positions[seat] = ladderDest
+                    delay(320L)
                 }
                 snakeDest != null -> {
                     statusText = "${player.name} rolled $roll and slid down snake ${positions[seat]} → $snakeDest!"
-                    onPlayCue(SoundCue.CAPTURE)
-                    delay(240L)
+                    onPlayCue(SoundCue.PIECE_SLIDE)
+                    delay(220L)
                     positions[seat] = snakeDest
+                    delay(320L)
                 }
                 else -> {
                     statusText = "${player.name} rolled $roll → Square ${positions[seat]}"
@@ -187,7 +197,6 @@ fun SnakesLaddersScreen(
             } else {
                 currentPlayer = (currentPlayer + 1) % sessionConfig.players.size
             }
-            isRolling = false
         }
     }
 
@@ -274,22 +283,6 @@ fun SnakesLaddersScreen(
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.align(Alignment.TopStart)
                                         )
-                                        if (occupants.isNotEmpty()) {
-                                            Row(
-                                                modifier = Modifier.align(Alignment.BottomEnd),
-                                                horizontalArrangement = Arrangement.spacedBy(1.dp)
-                                            ) {
-                                                occupants.forEach { pIdx ->
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(10.dp)
-                                                            .clip(CircleShape)
-                                                            .background(tokenColors[pIdx % tokenColors.size])
-                                                            .border(1.dp, Color.Black, CircleShape)
-                                                    )
-                                                }
-                                            }
-                                        }
                                     }
                                 }
                             }
@@ -335,6 +328,47 @@ fun SnakesLaddersScreen(
                             )
                         }
                     }
+                    // Smoothly interpolated floating player tokens
+                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                        val density = androidx.compose.ui.platform.LocalDensity.current
+                        val boardW = with(density) { maxWidth.toPx() }
+                        val boardH = with(density) { maxHeight.toPx() }
+                        val cellW = boardW / 10f
+                        val cellH = boardH / 10f
+                        val tokenPx = with(density) { 14.dp.toPx() }
+
+                        positions.forEachIndexed { pIdx, sq ->
+                            val zero = (sq - 1).coerceIn(0, 99)
+                            val rBottom = zero / 10
+                            val cRaw = zero % 10
+                            val targetCol = (if (rBottom % 2 == 0) cRaw else 9 - cRaw).toFloat()
+                            val targetRow = (9 - rBottom).toFloat()
+                            val animCol by animateFloatAsState(
+                                targetValue = targetCol,
+                                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
+                                label = "sl_col_$pIdx"
+                            )
+                            val animRow by animateFloatAsState(
+                                targetValue = targetRow,
+                                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
+                                label = "sl_row_$pIdx"
+                            )
+                            val spreadX = ((pIdx % 2) - 0.5f) * cellW * 0.28f
+                            val spreadY = ((pIdx / 2) - 0.5f) * cellH * 0.25f
+                            val px = (animCol + 0.5f) * cellW - tokenPx / 2f + spreadX
+                            val py = (animRow + 0.5f) * cellH - tokenPx / 2f + spreadY
+
+                            Box(
+                                modifier = Modifier
+                                    .offset { IntOffset(px.roundToInt(), py.roundToInt()) }
+                                    .size(14.dp)
+                                    .pulseEffect(active = pIdx == currentPlayer && winnerIdx == null, maxScale = 1.24f)
+                                    .clip(CircleShape)
+                                    .background(tokenColors[pIdx % tokenColors.size])
+                                    .border(1.5.dp, Color.Black, CircleShape)
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -351,20 +385,11 @@ fun SnakesLaddersScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Surface(
-                        modifier = Modifier.size(48.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = diceValue.toString(),
-                                style = MaterialTheme.typography.headlineMedium.copy(fontFamily = JetBrainsMonoFontFamily),
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
+                    AnimatedDieView(
+                        value = diceValue,
+                        isRolling = isRolling,
+                        size = 50.dp
+                    )
                     Column {
                         Text(activePlayer.name, style = MaterialTheme.typography.titleMedium)
                         Text(
@@ -380,6 +405,7 @@ fun SnakesLaddersScreen(
                     enabled = !isRolling && winnerIdx == null && !activePlayer.isAi,
                     modifier = Modifier
                         .height(48.dp)
+                        .bouncyPress(enabled = !isRolling && winnerIdx == null && !activePlayer.isAi)
                         .testTag("roll_dice_button"),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(

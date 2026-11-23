@@ -31,12 +31,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import com.example.data.repo.MatchOutcome
 import com.example.data.sound.SoundCue
 import com.example.domain.GameCatalog
 import com.example.domain.GameSessionConfig
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import kotlinx.coroutines.delay
 
@@ -125,7 +129,14 @@ fun NonogramScreen(
                 text = "%02d:%02d".format(elapsed / 60, elapsed % 60),
                 style = MaterialTheme.typography.titleMedium.copy(fontFamily = JetBrainsMonoFontFamily)
             )
-            OutlinedButton(onClick = { crossMode = !crossMode }, shape = RoundedCornerShape(10.dp)) {
+            OutlinedButton(
+                onClick = {
+                    crossMode = !crossMode
+                    onPlayCue(SoundCue.KEY_TICK)
+                },
+                modifier = Modifier.bouncyPress(),
+                shape = RoundedCornerShape(10.dp)
+            ) {
                 Text(if (crossMode) "Mode: Mark ×" else "Mode: Fill ■")
             }
         }
@@ -174,25 +185,39 @@ fun NonogramScreen(
                         }
                         for (c in 0 until dim) {
                             val cell = grid[r][c]
+                            val cellBg by animateColorAsState(
+                                targetValue = when (cell) {
+                                    1 -> MaterialTheme.colorScheme.primary
+                                    else -> MaterialTheme.colorScheme.surfaceVariant
+                                },
+                                animationSpec = tween(140),
+                                label = "nono_cell_${r}_$c"
+                            )
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
                                     .aspectRatio(1f)
                                     .padding(1.dp)
-                                    .background(
-                                        when (cell) {
-                                            1 -> MaterialTheme.colorScheme.primary
-                                            else -> MaterialTheme.colorScheme.surfaceVariant
-                                        },
-                                        RoundedCornerShape(3.dp)
-                                    )
+                                    .springPop(cell, popScale = 1.15f)
+                                    .bouncyPress(!solved)
+                                    .background(cellBg, RoundedCornerShape(3.dp))
                                     .border(0.6.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(3.dp))
                                     .clickable(enabled = !solved) {
                                         val next = grid.map { it.toMutableList() }
                                         val targetVal = if (crossMode) 2 else 1
-                                        next[r][c] = if (next[r][c] == targetVal) 0 else targetVal
-                                        grid = next.map { it.toList() }
-                                        onPlayCue(SoundCue.MOVE)
+                                        val newVal = if (next[r][c] == targetVal) 0 else targetVal
+                                        next[r][c] = newVal
+                                        val updated = next.map { it.toList() }
+                                        grid = updated
+                                        val rowSolved = (0 until dim).all { col -> (updated[r][col] == 1) == target[r][col] }
+                                        val colSolved = (0 until dim).all { row -> (updated[row][c] == 1) == target[row][c] }
+                                        onPlayCue(
+                                            when {
+                                                newVal == 1 && (rowSolved || colSolved) -> SoundCue.TILE_MERGE
+                                                newVal == 1 -> SoundCue.WOOD_TAP
+                                                else -> SoundCue.KEY_TICK
+                                            }
+                                        )
                                     },
                                 contentAlignment = Alignment.Center
                             ) {

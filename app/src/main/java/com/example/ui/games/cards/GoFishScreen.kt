@@ -32,6 +32,8 @@ import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
 import com.example.ui.components.PassAndPlayTurnHeader
 import com.example.ui.components.PrivacyCurtainOverlay
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.springPop
 import kotlinx.coroutines.delay
 
 @Composable
@@ -94,14 +96,14 @@ fun GoFishScreen(
             val (cleaned, gained) = stripBooks(nextHands[activeSeat] + matching)
             nextHands[activeSeat] = cleaned
             books[activeSeat] += gained
-            onPlayCue(SoundCue.TURN_PASS)
+            onPlayCue(if (gained > 0) SoundCue.TILE_MERGE else SoundCue.BOUNCE)
             statusText = "${sessionConfig.players[activeSeat].name} got ${matching.size}× ${rank.label} from ${sessionConfig.players[targetIdx].name}!"
             hands = nextHands
             selectedRank = cleaned.firstOrNull()?.rank
             finishCheck(nextHands, nextPond)
         } else {
             // Go Fish!
-            onPlayCue(SoundCue.MOVE)
+            onPlayCue(SoundCue.SPLASH)
             if (nextPond.isNotEmpty()) {
                 val drawn = nextPond.first()
                 nextPond = nextPond.drop(1)
@@ -165,6 +167,7 @@ fun GoFishScreen(
         dealt = deal(); for (i in books.indices) books[i] = 0
         activeSeat = 0; targetSeat = 1; selectedRank = null; showCurtain = false
         winnerSeat = null; recorded = false; statusText = "Pick a rank from your hand to ask an opponent."
+        onPlayCue(SoundCue.SHUFFLE)
     }
 
     GameScaffold(
@@ -198,7 +201,7 @@ fun GoFishScreen(
                             if (idx != activeSeat) {
                                 FilterChip(
                                     selected = targetSeat == idx,
-                                    onClick = { targetSeat = idx },
+                                    onClick = { targetSeat = idx; onPlayCue(SoundCue.KEY_TICK) },
                                     label = { Text("${p.name} (${hands[idx].size})") }
                                 )
                             }
@@ -220,7 +223,7 @@ fun GoFishScreen(
                         selected = selectedRank == card.rank,
                         width = 58.dp,
                         height = 84.dp,
-                        onClick = { if (!activePlayer.isAi) selectedRank = card.rank }
+                        onClick = { if (!activePlayer.isAi) { selectedRank = card.rank; onPlayCue(SoundCue.KEY_TICK) } }
                     )
                 }
             }
@@ -232,7 +235,11 @@ fun GoFishScreen(
                     if (r != null) askForRank(targetSeat, r)
                 },
                 enabled = !activePlayer.isAi && hands[activeSeat].isNotEmpty() && winnerSeat == null,
-                modifier = Modifier.fillMaxWidth().height(50.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp)
+                    .bouncyPress(enabled = !activePlayer.isAi && hands[activeSeat].isNotEmpty() && winnerSeat == null)
+                    .springPop(selectedRank, popScale = 1.04f)
             ) {
                 Text("Ask ${sessionConfig.players[targetSeat].name} for ${selectedRank?.label ?: "Rank"}")
             }

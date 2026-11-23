@@ -20,8 +20,10 @@ import androidx.compose.ui.unit.dp
 import com.example.data.repo.MatchOutcome
 import com.example.data.sound.SoundCue
 import com.example.domain.GameCatalog
+import androidx.compose.runtime.mutableIntStateOf
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
+import com.example.ui.components.shakeOnTrigger
 
 private data class FreeCellState(
     val freeCells: List<PlayingCard?>,
@@ -59,6 +61,7 @@ fun FreeCellScreen(
     var state by remember { mutableStateOf(deal()) }
     val undoStack = remember { mutableStateListOf<FreeCellState>() }
     var selection by remember { mutableStateOf<FcSel?>(null) }
+    var shakeCount by remember { mutableIntStateOf(0) }
     var recorded by remember { mutableStateOf(false) }
 
     val won = state.foundations.sumOf { it.size } == 52
@@ -109,7 +112,7 @@ fun FreeCellScreen(
             )
         }
         selection = null
-        onPlayCue(SoundCue.TURN_PASS)
+        onPlayCue(SoundCue.TILE_MERGE)
         return true
     }
 
@@ -127,7 +130,7 @@ fun FreeCellScreen(
         val nextCasc = if (sel is FcSel.Cascade) state.cascades.mapIndexed { i, l -> if (i == sel.col) l.dropLast(1) else l } else state.cascades
         state = state.copy(freeCells = nextFree, cascades = nextCasc, moves = state.moves + 1)
         selection = null
-        onPlayCue(SoundCue.MOVE)
+        onPlayCue(SoundCue.CARD_FLIP)
     }
 
     fun moveToCascade(targetCol: Int): Boolean {
@@ -140,8 +143,11 @@ fun FreeCellScreen(
         val freeOpen = state.freeCells.count { it == null }
         val emptyCasc = state.cascades.indices.count { it != targetCol && state.cascades[it].isEmpty() }
         val maxMove = (freeOpen + 1) * (1 shl emptyCasc)
-        if (moving.size > maxMove) return false
-        if (!canCascade(moving.first(), state.cascades[targetCol])) return false
+        if (moving.size > maxMove || !canCascade(moving.first(), state.cascades[targetCol])) {
+            shakeCount++
+            onPlayCue(SoundCue.ERROR)
+            return false
+        }
         undoStack.add(state)
         state = when (sel) {
             is FcSel.Free -> state.copy(
@@ -161,12 +167,13 @@ fun FreeCellScreen(
             )
         }
         selection = null
-        onPlayCue(SoundCue.MOVE)
+        onPlayCue(SoundCue.CARD_FLIP)
         return true
     }
 
     fun restart() {
         state = deal(); undoStack.clear(); selection = null; recorded = false
+        onPlayCue(SoundCue.SHUFFLE)
     }
 
     GameScaffold(
@@ -192,7 +199,10 @@ fun FreeCellScreen(
                         height = 58.dp,
                         onClick = {
                             if (card == null) moveToFreeCell(idx)
-                            else selection = if ((selection as? FcSel.Free)?.idx == idx) null else FcSel.Free(idx)
+                            else {
+                                selection = if ((selection as? FcSel.Free)?.idx == idx) null else FcSel.Free(idx)
+                                onPlayCue(SoundCue.KEY_TICK)
+                            }
                         }
                     )
                 }
@@ -210,7 +220,13 @@ fun FreeCellScreen(
         }
         Spacer(Modifier.height(12.dp))
 
-        Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .shakeOnTrigger(shakeCount),
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
             state.cascades.forEachIndexed { colIdx, col ->
                 Box(modifier = Modifier.weight(1f).clickable(enabled = col.isEmpty() && selection != null) { moveToCascade(colIdx) }) {
                     if (col.isEmpty()) {
@@ -228,6 +244,7 @@ fun FreeCellScreen(
                                     if (selection != null && (selection as? FcSel.Cascade)?.col != colIdx) {
                                         if (!moveToCascade(colIdx) && isAlternatingRun(col, cIdx)) {
                                             selection = FcSel.Cascade(colIdx, cIdx)
+                                            onPlayCue(SoundCue.KEY_TICK)
                                         }
                                     } else if (isAlternatingRun(col, cIdx)) {
                                         if (selection == FcSel.Cascade(colIdx, cIdx) && cIdx == col.lastIndex) {
@@ -235,6 +252,7 @@ fun FreeCellScreen(
                                             if (fIdx != -1) moveToFoundation(fIdx) else selection = null
                                         } else {
                                             selection = FcSel.Cascade(colIdx, cIdx)
+                                            onPlayCue(SoundCue.KEY_TICK)
                                         }
                                     }
                                 }

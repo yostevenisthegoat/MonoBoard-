@@ -34,6 +34,8 @@ import com.example.domain.GameCatalog
 import com.example.domain.GameSessionConfig
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.springPop
 
 private data class KlondikeState(
     val stock: List<PlayingCard>,
@@ -124,7 +126,7 @@ fun KlondikeScreen(
             }
         }
         selection = null
-        onPlayCue(SoundCue.TURN_PASS)
+        onPlayCue(SoundCue.TILE_MERGE)
         return true
     }
 
@@ -156,7 +158,7 @@ fun KlondikeScreen(
             }
         }
         selection = null
-        onPlayCue(SoundCue.MOVE)
+        onPlayCue(SoundCue.CARD_FLIP)
         return true
     }
 
@@ -171,18 +173,20 @@ fun KlondikeScreen(
                 waste = state.waste + drawn,
                 moves = state.moves + 1
             )
+            onPlayCue(SoundCue.CARD_FLIP)
         } else if (state.waste.isNotEmpty()) {
             state = state.copy(
                 stock = state.waste.reversed().map { it.copy(faceUp = false) },
                 waste = emptyList(),
                 moves = state.moves + 1
             )
+            onPlayCue(SoundCue.SHUFFLE)
         }
-        onPlayCue(SoundCue.MOVE)
     }
 
     fun restart() {
         state = deal(); undoStack.clear(); selection = null; recorded = false
+        onPlayCue(SoundCue.SHUFFLE)
     }
 
     GameScaffold(
@@ -204,7 +208,11 @@ fun KlondikeScreen(
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Surface(
-                    modifier = Modifier.size(width = 46.dp, height = 66.dp).clickable { drawStock() },
+                    modifier = Modifier
+                        .size(width = 46.dp, height = 66.dp)
+                        .bouncyPress()
+                        .springPop(state.stock.size, popScale = 1.06f)
+                        .clickable { drawStock() },
                     shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
@@ -226,6 +234,7 @@ fun KlondikeScreen(
                             if (fIdx != -1) tryMoveToFoundation(fIdx) else selection = null
                         } else {
                             selection = KlondikeSelection.Waste
+                            onPlayCue(SoundCue.KEY_TICK)
                         }
                     }
                 )
@@ -274,6 +283,7 @@ fun KlondikeScreen(
                                     val sel = selection
                                     if (sel == null) {
                                         selection = KlondikeSelection.Tableau(colIdx, cardIdx)
+                                        onPlayCue(SoundCue.KEY_TICK)
                                     } else if (sel is KlondikeSelection.Tableau && sel.col == colIdx && sel.cardIndex == cardIdx) {
                                         // Double tap top card -> auto foundation
                                         if (cardIdx == col.lastIndex) {
@@ -283,6 +293,7 @@ fun KlondikeScreen(
                                     } else {
                                         if (!tryMoveToTableau(colIdx)) {
                                             selection = KlondikeSelection.Tableau(colIdx, cardIdx)
+                                            onPlayCue(SoundCue.KEY_TICK)
                                         }
                                     }
                                 }

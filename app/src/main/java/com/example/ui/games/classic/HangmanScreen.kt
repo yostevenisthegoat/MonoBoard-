@@ -43,6 +43,9 @@ import com.example.domain.PlayMode
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 
 private val hangmanDictionary = listOf(
@@ -139,7 +142,7 @@ fun HangmanScreen(
                 }
             }
         } else {
-            MonoCard(elevated = true) {
+            MonoCard(elevated = true, modifier = Modifier.shakeOnTrigger(wrongGuesses)) {
                 Box(
                     modifier = Modifier.fillMaxWidth().height(170.dp).padding(16.dp),
                     contentAlignment = Alignment.Center
@@ -172,7 +175,8 @@ fun HangmanScreen(
                     text = secretWord.map { if (it in guessed || lost) it else '_' }.joinToString(" "),
                     fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = JetBrainsMonoFontFamily
+                    fontFamily = JetBrainsMonoFontFamily,
+                    modifier = Modifier.springPop(guessed.count { it in secretWord }, popScale = 1.1f)
                 )
             }
 
@@ -196,9 +200,11 @@ fun HangmanScreen(
                     Surface(
                         modifier = Modifier
                             .size(width = 40.dp, height = 44.dp)
+                            .bouncyPress(enabled = !used && !won && !lost)
+                            .springPop(if (used) ch else null, popScale = 1.15f)
                             .clickable(enabled = !used && !won && !lost) {
                                 guessed = guessed + ch
-                                onPlayCue(if (ch in secretWord) SoundCue.MOVE else SoundCue.ERROR)
+                                onPlayCue(if (ch in secretWord) SoundCue.TILE_MERGE else SoundCue.ERROR)
                             },
                         shape = RoundedCornerShape(8.dp),
                         color = when {

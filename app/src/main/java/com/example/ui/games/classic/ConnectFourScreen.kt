@@ -39,9 +39,17 @@ import com.example.domain.AiDifficulty
 import com.example.domain.GameCatalog
 import com.example.domain.GameSessionConfig
 import com.example.domain.PlayMode
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.EaseIn
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.PassAndPlayTurnHeader
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -66,6 +74,8 @@ fun ConnectFourScreen(
     var winnerSeat by remember { mutableStateOf<Int?>(null) }
     var isDraw by remember { mutableStateOf(false) }
     var elapsed by remember { mutableIntStateOf(0) }
+    var lastDrop by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var dropSerial by remember { mutableIntStateOf(0) }
     var recorded by remember { mutableStateOf(false) }
 
     fun findWinCells(b: List<List<Int>>): Pair<Int, Set<Pair<Int, Int>>> {
@@ -148,20 +158,27 @@ fun ConnectFourScreen(
     fun dropPiece(col: Int) {
         if (winnerSeat != null || isDraw) return
         val r = dropRow(grid, col)
-        if (r == -1) return
+        if (r == -1) {
+            onPlayCue(SoundCue.ERROR)
+            return
+        }
         undoStack.add(grid to activeSeat)
         val next = grid.map { it.toMutableList() }
         next[r][col] = activeSeat + 1
         grid = next.map { it.toList() }
-        onPlayCue(SoundCue.MOVE)
+        lastDrop = r to col
+        dropSerial++
 
         val (w, cells) = findWinCells(grid)
         if (w != 0) {
             winCells = cells
             winnerSeat = w - 1
+            onPlayCue(SoundCue.TILE_MERGE)
         } else if ((0 until cols).all { dropRow(grid, it) == -1 }) {
             isDraw = true
+            onPlayCue(SoundCue.BOUNCE)
         } else {
+            onPlayCue(SoundCue.BOUNCE)
             activeSeat = 1 - activeSeat
         }
     }
@@ -265,6 +282,7 @@ fun ConnectFourScreen(
                         Column(
                             modifier = Modifier
                                 .weight(1f)
+                                .bouncyPress(enabled = !isAiTurn && winnerSeat == null && !isDraw)
                                 .clickable(enabled = !isAiTurn && winnerSeat == null && !isDraw) {
                                     dropPiece(c)
                                 },
@@ -273,6 +291,16 @@ fun ConnectFourScreen(
                             for (r in 0 until rows) {
                                 val cell = grid[r][c]
                                 val isWinCell = (r to c) in winCells
+                                val isNewest = lastDrop == (r to c) && cell != 0
+                                val dropOffset = remember(dropSerial, r, c) { Animatable(if (isNewest) -(r + 1.2f) * 140f else 0f) }
+                                LaunchedEffect(dropSerial, isNewest) {
+                                    if (isNewest) {
+                                        dropOffset.animateTo(
+                                            targetValue = 0f,
+                                            animationSpec = spring(dampingRatio = 0.56f, stiffness = Spring.StiffnessMediumLow)
+                                        )
+                                    }
+                                }
                                 val discColor = when (cell) {
                                     1 -> Color(0xFFF5F5F5)
                                     2 -> Color(0xFF555555)
@@ -282,6 +310,10 @@ fun ConnectFourScreen(
                                     modifier = Modifier
                                         .weight(1f)
                                         .aspectRatio(1f)
+                                        .graphicsLayer {
+                                            translationY = if (isNewest) dropOffset.value else 0f
+                                        }
+                                        .pulseEffect(active = isWinCell, maxScale = 1.12f)
                                         .clip(CircleShape)
                                         .background(discColor)
                                         .border(

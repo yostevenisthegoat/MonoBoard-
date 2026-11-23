@@ -33,6 +33,8 @@ import com.example.domain.GameCatalog
 import com.example.domain.GameSessionConfig
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 
 private data class SpiderState(
@@ -132,7 +134,7 @@ fun SpiderSolitaireScreen(
                 moves = state.moves + 1
             )
             selected = null
-            onPlayCue(if (newlyCleared > 0) SoundCue.WIN else SoundCue.MOVE)
+            onPlayCue(if (newlyCleared > 0) SoundCue.TILE_MERGE else SoundCue.CARD_FLIP)
         } else {
             selected = null
         }
@@ -151,11 +153,12 @@ fun SpiderSolitaireScreen(
             moves = state.moves + 1
         )
         selected = null
-        onPlayCue(SoundCue.MOVE)
+        onPlayCue(if (newlyCleared > 0) SoundCue.TILE_MERGE else SoundCue.SHUFFLE)
     }
 
     fun restart() {
         state = deal(); undoStack.clear(); selected = null; recorded = false
+        onPlayCue(SoundCue.SHUFFLE)
     }
 
     GameScaffold(
@@ -171,9 +174,15 @@ fun SpiderSolitaireScreen(
         onRestart = ::restart
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Completed: ${state.completedSets} / 8", style = MaterialTheme.typography.titleMedium.copy(fontFamily = JetBrainsMonoFontFamily))
+            Text(
+                "Completed: ${state.completedSets} / 8",
+                style = MaterialTheme.typography.titleMedium.copy(fontFamily = JetBrainsMonoFontFamily),
+                modifier = Modifier.springPop(state.completedSets, popScale = 1.2f)
+            )
             Surface(
-                modifier = Modifier.clickable(enabled = state.stock.size >= 10) { dealFromStock() },
+                modifier = Modifier
+                    .bouncyPress(enabled = state.stock.size >= 10)
+                    .clickable(enabled = state.stock.size >= 10) { dealFromStock() },
                 shape = RoundedCornerShape(10.dp),
                 color = MaterialTheme.colorScheme.primary,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
@@ -208,6 +217,7 @@ fun SpiderSolitaireScreen(
                                         tryMove(colIdx)
                                     } else if (isOrderedSuitedRun(col, cIdx)) {
                                         selected = if (selected == (colIdx to cIdx)) null else colIdx to cIdx
+                                        onPlayCue(SoundCue.KEY_TICK)
                                     }
                                 }
                             )

@@ -36,6 +36,10 @@ import com.example.domain.GameCatalog
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.StatMetricTile
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 
 private data class MahjongTile(
     val id: Int,
@@ -85,6 +89,7 @@ fun MahjongScreen(
     var selectedId by remember { mutableStateOf<Int?>(null) }
     var matches by remember { mutableIntStateOf(0) }
     var recorded by remember { mutableStateOf(false) }
+    var errorShakeCount by remember { mutableIntStateOf(0) }
 
     fun isFree(t: MahjongTile, all: List<MahjongTile>): Boolean {
         if (t.removed) return false
@@ -129,6 +134,7 @@ fun MahjongScreen(
                 tiles = undoStack.removeAt(undoStack.lastIndex)
                 selectedId = null
                 matches = (matches - 1).coerceAtLeast(0)
+                onPlayCue(SoundCue.KEY_TICK)
             }
         },
         onRestart = ::restart
@@ -140,7 +146,10 @@ fun MahjongScreen(
         Spacer(Modifier.height(16.dp))
 
         Column(
-            modifier = Modifier.fillMaxWidth().weight(1f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .shakeOnTrigger(errorShakeCount),
             verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically)
         ) {
             for (r in 0..5) {
@@ -156,13 +165,23 @@ fun MahjongScreen(
                                 modifier = Modifier
                                     .weight(1f)
                                     .aspectRatio(0.85f)
+                                    .springPop(tile.id to tile.layer, popScale = 1.12f)
+                                    .pulseEffect(isSel, maxScale = 1.07f)
+                                    .bouncyPress(free)
                                     .clip(RoundedCornerShape(10.dp))
-                                    .clickable(enabled = free) {
+                                    .clickable(enabled = !won) {
+                                        if (!free) {
+                                            errorShakeCount++
+                                            onPlayCue(SoundCue.ERROR)
+                                            return@clickable
+                                        }
                                         val prevId = selectedId
                                         if (prevId == null) {
                                             selectedId = tile.id
+                                            onPlayCue(SoundCue.KEY_TICK)
                                         } else if (prevId == tile.id) {
                                             selectedId = null
+                                            onPlayCue(SoundCue.KEY_TICK)
                                         } else {
                                             val prevTile = tiles.first { it.id == prevId }
                                             if (prevTile.symbol == tile.symbol) {
@@ -172,9 +191,10 @@ fun MahjongScreen(
                                                 }
                                                 selectedId = null
                                                 matches++
-                                                onPlayCue(SoundCue.TURN_PASS)
+                                                onPlayCue(SoundCue.TILE_MERGE)
                                             } else {
                                                 selectedId = tile.id
+                                                errorShakeCount++
                                                 onPlayCue(SoundCue.ERROR)
                                             }
                                         }

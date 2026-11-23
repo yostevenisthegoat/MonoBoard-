@@ -39,6 +39,9 @@ import com.example.domain.GameCatalog
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 
 private data class CrosswordClue(val label: String, val clue: String)
@@ -232,9 +235,14 @@ fun CrosswordScreen(
                                 modifier = Modifier
                                     .weight(1f)
                                     .aspectRatio(1f)
+                                    .springPop(if (ch != ' ') ch else null, popScale = 1.18f)
+                                    .pulseEffect(isSel && !solved, maxScale = 1.06f)
                                     .background(if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface, RoundedCornerShape(6.dp))
                                     .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(6.dp))
-                                    .clickable { selected = r to c },
+                                    .clickable {
+                                        selected = r to c
+                                        onPlayCue(SoundCue.KEY_TICK)
+                                    },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
@@ -268,13 +276,16 @@ fun CrosswordScreen(
 
         Spacer(Modifier.height(8.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            OutlinedButton(onClick = {
-                val (sr, sc) = selected
-                val next = entries.map { it.toMutableList() }
-                next[sr][sc] = puzzle.rows[sr][sc]
-                entries = next.map { it.toList() }
-                onPlayCue(SoundCue.TURN_PASS)
-            }) { Text("Reveal Cell") }
+            OutlinedButton(
+                onClick = {
+                    val (sr, sc) = selected
+                    val next = entries.map { it.toMutableList() }
+                    next[sr][sc] = puzzle.rows[sr][sc]
+                    entries = next.map { it.toList() }
+                    onPlayCue(SoundCue.HINT)
+                },
+                modifier = Modifier.bouncyPress(!solved)
+            ) { Text("Reveal Cell") }
         }
         Spacer(Modifier.height(6.dp))
         FlowRow(
@@ -284,14 +295,20 @@ fun CrosswordScreen(
         ) {
             ('A'..'Z').forEach { letter ->
                 Surface(
-                    modifier = Modifier.size(width = 34.dp, height = 38.dp).clickable(enabled = !solved) {
-                        val (sr, sc) = selected
-                        val next = entries.map { it.toMutableList() }
-                        next[sr][sc] = letter
-                        entries = next.map { it.toList() }
-                        onPlayCue(SoundCue.MOVE)
-                        nextCell(sr, sc)
-                    },
+                    modifier = Modifier
+                        .size(width = 34.dp, height = 38.dp)
+                        .bouncyPress(!solved)
+                        .clickable(enabled = !solved) {
+                            val (sr, sc) = selected
+                            val next = entries.map { it.toMutableList() }
+                            next[sr][sc] = letter
+                            val updated = next.map { it.toList() }
+                            entries = updated
+                            val rowComplete = (0 until dim).all { col -> updated[sr][col] == puzzle.rows[sr][col] }
+                            val colComplete = (0 until dim).all { row -> updated[row][sc] == puzzle.rows[row][sc] }
+                            onPlayCue(if (rowComplete || colComplete) SoundCue.TILE_MERGE else SoundCue.KEY_TICK)
+                            nextCell(sr, sc)
+                        },
                     shape = RoundedCornerShape(6.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)

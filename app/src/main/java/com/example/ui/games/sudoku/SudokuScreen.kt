@@ -54,6 +54,9 @@ import com.example.domain.GameSessionConfig
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import kotlinx.coroutines.delay
 
@@ -84,6 +87,7 @@ fun SudokuScreen(
     var noteMode by remember { mutableStateOf(false) }
     var isPaused by remember { mutableStateOf(false) }
     var mistakes by remember { mutableIntStateOf(0) }
+    var errorShakeCount by remember { mutableIntStateOf(0) }
     var hintsUsed by remember { mutableIntStateOf(0) }
     var elapsedSeconds by remember { mutableIntStateOf(0) }
     var solved by remember { mutableStateOf(false) }
@@ -138,13 +142,14 @@ fun SudokuScreen(
             val cur = updatedRow[c]
             updatedRow[c] = if (digit in cur) cur - digit else cur + digit
             notes = notes.toMutableList().apply { this[r] = updatedRow.toList() }
-            onPlayCue(SoundCue.MOVE)
+            onPlayCue(SoundCue.KEY_TICK)
         } else {
             val updatedBoard = board.map { it.toMutableList() }
             updatedBoard[r][c] = digit
             board = updatedBoard.map { it.toList() }
             if (digit != generated.solution[r][c]) {
                 mistakes++
+                errorShakeCount++
                 onPlayCue(SoundCue.ERROR)
             } else {
                 // Clear matching notes in row/col/box
@@ -155,7 +160,12 @@ fun SudokuScreen(
                 }
                 nextNotes[r][c] = emptySet()
                 notes = nextNotes.map { it.toList() }
-                onPlayCue(SoundCue.MOVE)
+                val rowDone = (0..8).all { col -> updatedBoard[r][col] == generated.solution[r][col] }
+                val colDone = (0..8).all { row -> updatedBoard[row][c] == generated.solution[row][c] }
+                val br = (r / 3) * 3
+                val bc = (c / 3) * 3
+                val boxDone = (br until br + 3).all { rr -> (bc until bc + 3).all { cc -> updatedBoard[rr][cc] == generated.solution[rr][cc] } }
+                onPlayCue(if (rowDone || colDone || boxDone) SoundCue.TILE_MERGE else SoundCue.KEY_TICK)
             }
         }
     }
@@ -170,6 +180,7 @@ fun SudokuScreen(
         val updatedNotes = notes.map { it.toMutableList() }
         updatedNotes[r][c] = emptySet()
         notes = updatedNotes.map { it.toList() }
+        onPlayCue(SoundCue.WOOD_TAP)
     }
 
     fun applyHint() {
@@ -186,7 +197,7 @@ fun SudokuScreen(
         board = updated.map { it.toList() }
         selectedCell = target
         hintsUsed++
-        onPlayCue(SoundCue.TURN_PASS)
+        onPlayCue(SoundCue.HINT)
     }
 
     fun restart() {
@@ -263,7 +274,9 @@ fun SudokuScreen(
         ) {
             val gridSize = minOf(maxWidth, maxHeight)
             Surface(
-                modifier = Modifier.size(gridSize),
+                modifier = Modifier
+                    .size(gridSize)
+                    .shakeOnTrigger(errorShakeCount),
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
@@ -356,7 +369,8 @@ fun SudokuScreen(
                                                     isMistake -> Color(0xFFEF5350)
                                                     isGiven -> MaterialTheme.colorScheme.onSurface
                                                     else -> MaterialTheme.colorScheme.primary
-                                                }
+                                                },
+                                                modifier = Modifier.springPop(if (!isGiven) value else null, popScale = 1.25f)
                                             )
                                         } else if (notes[r][c].isNotEmpty()) {
                                             Text(
@@ -427,6 +441,7 @@ fun SudokuScreen(
                     modifier = Modifier
                         .weight(1f)
                         .height(52.dp)
+                        .bouncyPress(enabled = remaining > 0 || noteMode)
                         .clickable(enabled = remaining > 0 || noteMode) { placeDigit(digit) },
                     shape = RoundedCornerShape(10.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,

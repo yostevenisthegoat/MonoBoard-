@@ -34,9 +34,13 @@ import com.example.data.sound.SoundCue
 import com.example.domain.GameCatalog
 import com.example.domain.GameSessionConfig
 import com.example.domain.PlayMode
+import com.example.ui.components.AnimatedCounterText
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.PassAndPlayTurnHeader
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import kotlinx.coroutines.delay
 
@@ -85,10 +89,10 @@ fun MancalaScreen(
                 onPlayCue(SoundCue.CAPTURE)
                 statusText = "${sessionConfig.players[activeSeat].name} captured opposite seeds!"
             } else {
-                onPlayCue(SoundCue.MOVE)
+                onPlayCue(SoundCue.WOOD_TAP)
             }
         } else {
-            onPlayCue(if (extraTurn) SoundCue.TURN_PASS else SoundCue.MOVE)
+            onPlayCue(if (extraTurn) SoundCue.BOUNCE else SoundCue.WOOD_TAP)
             statusText = if (extraTurn) "${sessionConfig.players[activeSeat].name} earned an extra turn!" else "${sessionConfig.players[1 - activeSeat].name}'s turn"
         }
 
@@ -224,7 +228,11 @@ fun MancalaScreen(
 @Composable
 private fun MancalaStore(label: String, count: Int, active: Boolean) {
     Surface(
-        modifier = Modifier.width(52.dp).fillMaxHeight(),
+        modifier = Modifier
+            .width(52.dp)
+            .fillMaxHeight()
+            .pulseEffect(active, maxScale = 1.03f)
+            .springPop(count, popScale = 1.08f),
         shape = RoundedCornerShape(16.dp),
         color = if (active) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.background,
         border = BorderStroke(if (active) 1.5.dp else 1.dp, if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
@@ -235,7 +243,11 @@ private fun MancalaStore(label: String, count: Int, active: Boolean) {
         ) {
             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(4.dp))
-            Text(count.toString(), fontSize = 24.sp, fontWeight = FontWeight.Bold, fontFamily = JetBrainsMonoFontFamily)
+            AnimatedCounterText(
+                text = count.toString(),
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 24.sp, fontFamily = JetBrainsMonoFontFamily),
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }
@@ -251,6 +263,8 @@ private fun MancalaPit(
     Surface(
         modifier = modifier
             .fillMaxHeight()
+            .bouncyPress(enabled)
+            .springPop(count, popScale = 1.10f)
             .clip(RoundedCornerShape(14.dp))
             .clickable(enabled = enabled, onClick = onClick),
         shape = RoundedCornerShape(14.dp),
@@ -258,7 +272,11 @@ private fun MancalaPit(
         border = BorderStroke(1.dp, if (highlighted) MaterialTheme.colorScheme.primary.copy(alpha = 0.7f) else MaterialTheme.colorScheme.outline)
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Text(count.toString(), fontSize = 18.sp, fontWeight = FontWeight.Bold, fontFamily = JetBrainsMonoFontFamily)
+            AnimatedCounterText(
+                text = count.toString(),
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp, fontFamily = JetBrainsMonoFontFamily),
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }

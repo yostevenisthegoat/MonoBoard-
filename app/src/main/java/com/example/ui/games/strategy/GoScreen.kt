@@ -43,6 +43,9 @@ import com.example.domain.PlayMode
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.PassAndPlayTurnHeader
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -64,6 +67,7 @@ fun GoScreen(
     var consecutivePasses by remember { mutableIntStateOf(0) }
     var gameOver by remember { mutableStateOf(false) }
     var recorded by remember { mutableStateOf(false) }
+    var errorShakeCount by remember { mutableIntStateOf(0) }
 
     fun boardKey(b: List<List<Int>>): String = b.joinToString("") { r -> r.joinToString("") }
 
@@ -121,7 +125,7 @@ fun GoScreen(
         captures = captures.toMutableList().apply { this[activeSeat] += capCount }
         consecutivePasses = 0
         activeSeat = 1 - activeSeat
-        onPlayCue(if (capCount > 0) SoundCue.CAPTURE else SoundCue.MOVE)
+        onPlayCue(if (capCount > 0) SoundCue.CAPTURE else SoundCue.WOOD_TAP)
         return true
     }
 
@@ -221,7 +225,7 @@ fun GoScreen(
         ) {
             val boardSize = minOf(maxWidth, maxHeight, 360.dp)
             Surface(
-                modifier = Modifier.size(boardSize),
+                modifier = Modifier.size(boardSize).shakeOnTrigger(errorShakeCount),
                 shape = RoundedCornerShape(12.dp),
                 color = Color(0xFFD7B67A),
                 border = BorderStroke(2.dp, MaterialTheme.colorScheme.outline)
@@ -254,7 +258,10 @@ fun GoScreen(
                                     }
                                     .size(touchSize)
                                     .clickable(enabled = !isAiTurn && !gameOver && st == 0) {
-                                        tryPlaceStone(r, c)
+                                        if (!tryPlaceStone(r, c)) {
+                                            errorShakeCount++
+                                            onPlayCue(SoundCue.ERROR)
+                                        }
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -262,6 +269,7 @@ fun GoScreen(
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize(0.84f)
+                                            .springPop(st, popScale = 1.24f)
                                             .clip(CircleShape)
                                             .background(if (st == 1) Color(0xFF121212) else Color(0xFFFDFDFD))
                                             .border(1.dp, Color.DarkGray, CircleShape)
@@ -275,10 +283,11 @@ fun GoScreen(
         }
         Spacer(Modifier.height(10.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            val canPass = !isAiTurn && !gameOver
             Button(
                 onClick = ::passTurn,
-                enabled = !isAiTurn && !gameOver,
-                modifier = Modifier.weight(1f).height(48.dp)
+                enabled = canPass,
+                modifier = Modifier.weight(1f).height(48.dp).bouncyPress(canPass)
             ) { Text("Pass Turn") }
         }
     }

@@ -33,6 +33,9 @@ import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
 import com.example.ui.components.PassAndPlayTurnHeader
 import com.example.ui.components.PrivacyCurtainOverlay
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.springPop
 import kotlinx.coroutines.delay
 
 @Composable
@@ -90,7 +93,7 @@ fun CrazyEightsScreen(
         hands = nextHands
         discardPile = discardPile + card
         activeSuit = nextSuit
-        onPlayCue(SoundCue.MOVE)
+        onPlayCue(if (card.rank == Rank.EIGHT) SoundCue.BOUNCE else SoundCue.CARD_FLIP)
         statusText = "${sessionConfig.players[activeSeat].name} played ${card.label} (Suit: ${nextSuit.symbol})"
 
         if (nextHands[activeSeat].isEmpty()) {
@@ -105,6 +108,7 @@ fun CrazyEightsScreen(
         if (stock.isEmpty() && discardPile.size > 1) {
             stock = discardPile.dropLast(1).shuffled()
             discardPile = listOf(discardPile.last())
+            onPlayCue(SoundCue.SHUFFLE)
         }
         if (stock.isEmpty()) {
             statusText = "${sessionConfig.players[activeSeat].name} passed (empty deck)."
@@ -114,7 +118,7 @@ fun CrazyEightsScreen(
         val drawn = stock.first()
         stock = stock.drop(1)
         hands = hands.mapIndexed { idx, h -> if (idx == activeSeat) h + drawn else h }
-        onPlayCue(SoundCue.MOVE)
+        onPlayCue(SoundCue.CARD_FLIP)
         statusText = "${sessionConfig.players[activeSeat].name} drew a card."
         if (!isPlayable(drawn)) advanceTurn()
     }
@@ -146,6 +150,7 @@ fun CrazyEightsScreen(
     fun restart() {
         dealt = deal(); activeSeat = 0; showCurtain = false; pendingWildCard = null
         winnerSeat = null; recorded = false; statusText = "Match suit or rank, or play an 8!"
+        onPlayCue(SoundCue.SHUFFLE)
     }
 
     GameScaffold(
@@ -177,9 +182,15 @@ fun CrazyEightsScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Text("ACTIVE SUIT: ${activeSuit.symbol}", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "ACTIVE SUIT: ${activeSuit.symbol}",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier
+                            .springPop(activeSuit, popScale = 1.25f)
+                            .pulseEffect(active = true, maxScale = 1.07f)
+                    )
                     Spacer(Modifier.height(12.dp))
-                    PlayingCardView(topCard, width = 84.dp, height = 118.dp)
+                    PlayingCardView(topCard, width = 84.dp, height = 118.dp, modifier = Modifier.springPop(discardPile.size, popScale = 1.12f))
                 }
             }
 
@@ -205,7 +216,7 @@ fun CrazyEightsScreen(
             Button(
                 onClick = ::drawCard,
                 enabled = !activePlayer.isAi && winnerSeat == null,
-                modifier = Modifier.fillMaxWidth().height(48.dp)
+                modifier = Modifier.fillMaxWidth().height(48.dp).bouncyPress(enabled = !activePlayer.isAi && winnerSeat == null)
             ) { Text("Draw Card") }
         }
     }

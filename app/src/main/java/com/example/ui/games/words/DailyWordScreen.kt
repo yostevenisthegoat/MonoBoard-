@@ -29,6 +29,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import com.example.data.repo.MatchOutcome
 import com.example.data.sound.SoundCue
 import com.example.domain.GameCatalog
@@ -36,6 +41,9 @@ import com.example.domain.GameSessionConfig
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import kotlinx.coroutines.delay
 import java.util.Calendar
@@ -77,6 +85,7 @@ fun DailyWordScreen(
     var lost by remember { mutableStateOf(false) }
     var elapsed by remember { mutableIntStateOf(0) }
     var recorded by remember { mutableStateOf(false) }
+    var errorShakeCount by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(won, lost) {
         while (!won && !lost) {
@@ -137,6 +146,7 @@ fun DailyWordScreen(
         if (won || lost) return
         if (currentInput.length < 5) {
             statusBanner = "Enter a 5-letter word"
+            errorShakeCount++
             onPlayCue(SoundCue.ERROR)
             return
         }
@@ -173,7 +183,7 @@ fun DailyWordScreen(
                 )
             }
         } else {
-            onPlayCue(SoundCue.MOVE)
+            onPlayCue(SoundCue.TILE_MERGE)
         }
     }
 
@@ -200,7 +210,8 @@ fun DailyWordScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
+                .weight(1f)
+                .shakeOnTrigger(errorShakeCount),
             verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -218,7 +229,21 @@ fun DailyWordScreen(
                 ) {
                     for (col in 0 until 5) {
                         val ch = word.getOrNull(col)?.toString() ?: ""
-                        val state = eval?.get(col) ?: LetterState.EMPTY
+                        val wasSubmitted = row < guesses.size
+                        var revealed by remember(row, roundIndex) { mutableStateOf(false) }
+                        val flipScaleY = remember(row, roundIndex, col) { Animatable(1f) }
+                        LaunchedEffect(wasSubmitted) {
+                            if (wasSubmitted && !revealed) {
+                                delay(col * 85L)
+                                flipScaleY.animateTo(0.05f, tween(90))
+                                revealed = true
+                                flipScaleY.animateTo(
+                                    1f,
+                                    spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+                                )
+                            }
+                        }
+                        val state = if (revealed) (eval?.get(col) ?: LetterState.EMPTY) else LetterState.EMPTY
                         val bg = when (state) {
                             LetterState.EXACT -> Color(0xFF2E7D32)
                             LetterState.PRESENT -> Color(0xFFC79100)
@@ -229,7 +254,9 @@ fun DailyWordScreen(
                         Surface(
                             modifier = Modifier
                                 .weight(1f)
-                                .aspectRatio(1f),
+                                .aspectRatio(1f)
+                                .springPop(if (ch.isNotEmpty() && !wasSubmitted) ch else null, popScale = 1.14f)
+                                .graphicsLayer { scaleY = flipScaleY.value },
                             shape = RoundedCornerShape(8.dp),
                             color = bg,
                             border = BorderStroke(
@@ -294,7 +321,7 @@ fun DailyWordScreen(
                             onClick = {
                                 if (!won && !lost && currentInput.length < 5) {
                                     currentInput += ch
-                                    onPlayCue(SoundCue.MOVE)
+                                    onPlayCue(SoundCue.KEY_TICK)
                                 }
                             }
                         )
@@ -308,6 +335,7 @@ fun DailyWordScreen(
                             onClick = {
                                 if (!won && !lost && currentInput.isNotEmpty()) {
                                     currentInput = currentInput.dropLast(1)
+                                    onPlayCue(SoundCue.KEY_TICK)
                                 }
                             }
                         )
@@ -340,6 +368,7 @@ private fun KeyCap(
     Surface(
         modifier = modifier
             .height(48.dp)
+            .bouncyPress()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(8.dp),
         color = bg,

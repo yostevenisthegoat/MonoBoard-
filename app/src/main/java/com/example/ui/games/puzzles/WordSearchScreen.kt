@@ -32,12 +32,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import com.example.data.repo.MatchOutcome
 import com.example.data.sound.SoundCue
 import com.example.domain.GameCatalog
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import kotlinx.coroutines.delay
 
@@ -96,6 +102,7 @@ fun WordSearchScreen(
     var foundWords by remember { mutableStateOf(emptySet<String>()) }
     var elapsed by remember { mutableIntStateOf(0) }
     var recorded by remember { mutableStateOf(false) }
+    var errorShakeCount by remember { mutableIntStateOf(0) }
 
     val foundCells = remember(foundWords, puzzle) {
         foundWords.flatMap { puzzle.words[it].orEmpty() }.toSet()
@@ -139,6 +146,7 @@ fun WordSearchScreen(
                     val found = w in foundWords
                     Text(
                         text = w,
+                        modifier = Modifier.springPop(found, popScale = 1.14f),
                         style = MaterialTheme.typography.labelLarge.copy(
                             fontFamily = JetBrainsMonoFontFamily,
                             textDecoration = if (found) TextDecoration.LineThrough else TextDecoration.None
@@ -151,7 +159,7 @@ fun WordSearchScreen(
         Spacer(Modifier.height(12.dp))
 
         Surface(
-            modifier = Modifier.fillMaxWidth().weight(1f),
+            modifier = Modifier.fillMaxWidth().weight(1f).shakeOnTrigger(errorShakeCount),
             shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surface,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
@@ -163,24 +171,30 @@ fun WordSearchScreen(
                             val pos = r to c
                             val isStart = startCell == pos
                             val isFound = pos in foundCells
+                            val cellBg by animateColorAsState(
+                                targetValue = when {
+                                    isStart -> MaterialTheme.colorScheme.primary
+                                    isFound -> MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+                                    else -> MaterialTheme.colorScheme.surfaceVariant
+                                },
+                                animationSpec = tween(160),
+                                label = "ws_cell_${r}_$c"
+                            )
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
                                     .aspectRatio(1f)
                                     .padding(1.5.dp)
-                                    .background(
-                                        when {
-                                            isStart -> MaterialTheme.colorScheme.primary
-                                            isFound -> MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
-                                            else -> MaterialTheme.colorScheme.surfaceVariant
-                                        },
-                                        RoundedCornerShape(6.dp)
-                                    )
+                                    .springPop(isFound, popScale = 1.20f)
+                                    .pulseEffect(isStart, maxScale = 1.12f)
+                                    .bouncyPress(!allFound)
+                                    .background(cellBg, RoundedCornerShape(6.dp))
                                     .border(0.5.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(6.dp))
                                     .clickable(enabled = !allFound) {
                                         val s = startCell
                                         if (s == null) {
                                             startCell = pos
+                                            onPlayCue(SoundCue.KEY_TICK)
                                         } else {
                                             val match = puzzle.words.entries.firstOrNull { (w, cells) ->
                                                 w !in foundWords &&
@@ -188,8 +202,9 @@ fun WordSearchScreen(
                                             }
                                             if (match != null) {
                                                 foundWords = foundWords + match.key
-                                                onPlayCue(SoundCue.TURN_PASS)
+                                                onPlayCue(SoundCue.TILE_MERGE)
                                             } else {
+                                                errorShakeCount++
                                                 onPlayCue(SoundCue.ERROR)
                                             }
                                             startCell = null

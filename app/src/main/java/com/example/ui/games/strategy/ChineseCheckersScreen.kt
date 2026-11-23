@@ -36,6 +36,9 @@ import com.example.domain.GameSessionConfig
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.PassAndPlayTurnHeader
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.springPop
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -141,7 +144,10 @@ fun ChineseCheckersScreen(
         next[to] = seat
         pieces = next
         selected = null
-        onPlayCue(SoundCue.MOVE)
+        val dq = to.first - from.first
+        val dr = to.second - from.second
+        val hexDist = (kotlin.math.abs(dq) + kotlin.math.abs(dr) + kotlin.math.abs(dq + dr)) / 2
+        onPlayCue(if (hexDist > 1) SoundCue.BOUNCE else SoundCue.WOOD_TAP)
 
         val goalCells = starBoardCells.filter { it.homeSeat == goalHomeForSeat(seat) }.map { it.q to it.r }
         if (goalCells.all { next[it] == seat }) {
@@ -223,6 +229,9 @@ fun ChineseCheckersScreen(
                             modifier = Modifier
                                 .offset { IntOffset((px - dotDp.toPx() / 2f).roundToInt(), (py - dotDp.toPx() / 2f).roundToInt()) }
                                 .size(dotDp)
+                                .springPop(owner, popScale = 1.24f)
+                                .pulseEffect(isSel || (isDest && !activePlayer.isAi), maxScale = 1.18f)
+                                .bouncyPress(enabled = !activePlayer.isAi && winnerSeat == null && (isDest || owner == activeSeat))
                                 .clip(CircleShape)
                                 .background(
                                     when {
@@ -241,6 +250,7 @@ fun ChineseCheckersScreen(
                                         movePiece(selected!!, coord)
                                     } else if (owner == activeSeat) {
                                         selected = coord
+                                        onPlayCue(SoundCue.KEY_TICK)
                                     }
                                 }
                         )

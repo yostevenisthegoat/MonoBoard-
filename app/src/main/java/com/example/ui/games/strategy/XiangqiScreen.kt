@@ -43,6 +43,9 @@ import com.example.domain.PlayMode
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.PassAndPlayTurnHeader
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.springPop
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -171,6 +174,23 @@ fun XiangqiScreen(
         return out
     }
 
+    fun isGeneralChecked(b: List<List<XqPiece?>>, side: XqSide): Boolean {
+        var genPos: Pair<Int, Int>? = null
+        for (r in 0..9) for (c in 0..8) {
+            val p = b[r][c]
+            if (p != null && p.side == side && p.type == XqType.GENERAL) {
+                genPos = r to c
+                break
+            }
+        }
+        val gp = genPos ?: return false
+        for (r in 0..9) for (c in 0..8) {
+            val p = b[r][c]
+            if (p != null && p.side != side && gp in legalMovesFrom(b, r, c)) return true
+        }
+        return false
+    }
+
     fun applyMove(from: Pair<Int, Int>, to: Pair<Int, Int>) {
         val next = board.map { it.toMutableList() }
         val moving = next[from.first][from.second] ?: return
@@ -178,14 +198,24 @@ fun XiangqiScreen(
         next[from.first][from.second] = null
         next[to.first][to.second] = moving
         undoStack.add(board to turn)
-        board = next.map { it.toList() }
+        val immutable = next.map { it.toList() }
+        board = immutable
         selected = null
-        onPlayCue(if (captured != null) SoundCue.CAPTURE else SoundCue.MOVE)
         if (captured?.type == XqType.GENERAL) {
+            onPlayCue(SoundCue.CAPTURE)
             winner = moving.side
             onPlayCue(SoundCue.WIN)
         } else {
-            turn = if (turn == XqSide.RED) XqSide.BLACK else XqSide.RED
+            val oppSide = if (turn == XqSide.RED) XqSide.BLACK else XqSide.RED
+            val givesCheck = isGeneralChecked(immutable, oppSide)
+            onPlayCue(
+                when {
+                    givesCheck -> SoundCue.CHECK_ALERT
+                    captured != null -> SoundCue.CAPTURE
+                    else -> SoundCue.WOOD_TAP
+                }
+            )
+            turn = oppSide
         }
     }
 
@@ -233,6 +263,7 @@ fun XiangqiScreen(
             if (undoStack.isNotEmpty() && !isAiTurn) {
                 val p = undoStack.removeAt(undoStack.lastIndex)
                 board = p.first; turn = p.second; selected = null; winner = null
+                onPlayCue(SoundCue.KEY_TICK)
             }
         },
         onRestart = ::restart
@@ -273,19 +304,27 @@ fun XiangqiScreen(
                     }
 
                     val cellDp = (w / 9.2f)
+                    val checkedRed = remember(board) { isGeneralChecked(board, XqSide.RED) }
+                    val checkedBlack = remember(board) { isGeneralChecked(board, XqSide.BLACK) }
                     for (r in 0..9) for (c in 0..8) {
                         val p = board[r][c]
                         val isDest = (r to c) in legalDests
                         val isSel = selected == (r to c)
+                        val isCheckedGen = p?.type == XqType.GENERAL &&
+                            ((p.side == XqSide.RED && checkedRed) || (p.side == XqSide.BLACK && checkedBlack))
                         val cx = pxPad + c * stepX
                         val cy = pxPad + r * stepY
                         Box(
                             modifier = Modifier
                                 .offset { IntOffset((cx - cellDp.toPx() / 2f).roundToInt(), (cy - cellDp.toPx() / 2f).roundToInt()) }
                                 .size(cellDp)
+                                .bouncyPress(enabled = !isAiTurn && winner == null && (isDest || p?.side == turn))
                                 .clickable(enabled = !isAiTurn && winner == null) {
                                     if (isDest && selected != null) applyMove(selected!!, r to c)
-                                    else if (p?.side == turn) selected = r to c
+                                    else if (p?.side == turn) {
+                                        selected = r to c
+                                        onPlayCue(SoundCue.KEY_TICK)
+                                    }
                                 },
                             contentAlignment = Alignment.Center
                         ) {
@@ -293,9 +332,20 @@ fun XiangqiScreen(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize(0.88f)
+                                        .springPop(p, popScale = 1.20f)
+                                        .pulseEffect(isSel || isCheckedGen, maxScale = 1.14f)
                                         .clip(CircleShape)
-                                        .background(Color(0xFFFAF0DC))
-                                        .border(if (isSel) 2.5.dp else 1.5.dp, if (isSel) Color.Black else if (p.side == XqSide.RED) Color(0xFFB71C1C) else Color(0xFF1A1A1A), CircleShape),
+                                        .background(if (isCheckedGen) Color(0xFFFFE0E0) else Color(0xFFFAF0DC))
+                                        .border(
+                                            width = if (isSel || isCheckedGen) 2.5.dp else 1.5.dp,
+                                            color = when {
+                                                isCheckedGen -> Color(0xFFD32F2F)
+                                                isSel -> Color.Black
+                                                p.side == XqSide.RED -> Color(0xFFB71C1C)
+                                                else -> Color(0xFF1A1A1A)
+                                            },
+                                            shape = CircleShape
+                                        ),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
@@ -306,7 +356,13 @@ fun XiangqiScreen(
                                     )
                                 }
                             } else if (isDest) {
-                                Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(Color(0xFF2E7D32).copy(alpha = 0.7f)))
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .pulseEffect(!isAiTurn && winner == null, maxScale = 1.25f)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF2E7D32).copy(alpha = 0.75f))
+                                )
                             }
                         }
                     }

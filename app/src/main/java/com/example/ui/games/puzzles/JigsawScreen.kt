@@ -40,6 +40,9 @@ import com.example.domain.GameSessionConfig
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.StatMetricTile
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.springPop
 
 @Composable
 fun JigsawScreen(
@@ -118,6 +121,9 @@ fun JigsawScreen(
                                     modifier = Modifier
                                         .weight(1f)
                                         .aspectRatio(1f)
+                                        .springPop(pieceId to isLocked, popScale = 1.14f)
+                                        .pulseEffect(isSel, maxScale = 1.07f)
+                                        .bouncyPress(!solved && !isLocked)
                                         .border(
                                             width = if (isSel) 2.5.dp else if (isLocked) 1.5.dp else 0.7.dp,
                                             color = if (isSel) Color.White else if (isLocked) Color(0xFF81C784) else MaterialTheme.colorScheme.outline,
@@ -127,8 +133,10 @@ fun JigsawScreen(
                                             val prev = selectedSlot
                                             if (prev == null) {
                                                 selectedSlot = slot
+                                                onPlayCue(SoundCue.KEY_TICK)
                                             } else if (prev == slot) {
                                                 selectedSlot = null
+                                                onPlayCue(SoundCue.KEY_TICK)
                                             } else {
                                                 val next = tiles.toMutableList()
                                                 val tmp = next[prev]
@@ -137,7 +145,7 @@ fun JigsawScreen(
                                                 tiles = next
                                                 selectedSlot = null
                                                 swaps++
-                                                onPlayCue(if (next[prev] == prev || next[slot] == slot) SoundCue.TURN_PASS else SoundCue.MOVE)
+                                                onPlayCue(if (next[prev] == prev || next[slot] == slot) SoundCue.TILE_MERGE else SoundCue.PIECE_SLIDE)
                                             }
                                         }
                                 ) {

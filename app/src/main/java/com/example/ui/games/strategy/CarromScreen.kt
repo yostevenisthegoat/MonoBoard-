@@ -1,5 +1,12 @@
 package com.example.ui.games.strategy
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -102,6 +109,15 @@ fun CarromScreen(
     var scores by remember { mutableStateOf(listOf(0, 0)) }
     var winnerSeat by remember { mutableStateOf<Int?>(null) }
     var recorded by remember { mutableStateOf(false) }
+    var lastPocketPos by remember { mutableStateOf<Pair<Float, Float>?>(null) }
+    val pocketRipple = remember { Animatable(1f) }
+    val strikerPulseInf = rememberInfiniteTransition(label = "carrom_striker")
+    val strikerPulseScale by strikerPulseInf.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.18f,
+        animationSpec = infiniteRepeatable(tween(750, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "carrom_striker_scale"
+    )
 
     val pockets = remember {
         listOf(0.06f to 0.06f, 0.94f to 0.06f, 0.06f to 0.94f, 0.94f to 0.94f)
@@ -113,11 +129,12 @@ fun CarromScreen(
         val striker = CarromBody(99, CoinType.STRIKER, strikerX, sy, vx, vy, radius = 0.044f)
         val simList = (bodies.filter { !it.pocketed }.map { it.copy() } + striker).toMutableList()
         isSimulating = true
-        onPlayCue(SoundCue.MOVE)
+        onPlayCue(SoundCue.PIECE_SLIDE)
 
         scope.launch {
             var anyPocketedForCurrent = false
-            repeat(150) {
+            var lastClackStep = -5
+            repeat(150) { step ->
                 var moving = false
                 for (b in simList) {
                     if (b.pocketed) continue
@@ -148,6 +165,11 @@ fun CarromScreen(
                                 scores = scores.toMutableList().apply { this[activeSeat] += 3 }
                                 anyPocketedForCurrent = true
                             }
+                            lastPocketPos = px to py
+                            scope.launch {
+                                pocketRipple.snapTo(0f)
+                                pocketRipple.animateTo(1f, tween(380))
+                            }
                             onPlayCue(SoundCue.CAPTURE)
                         }
                     }
@@ -170,6 +192,10 @@ fun CarromScreen(
                             if (dot > 0f) {
                                 a.vx -= dot * nx * 0.92f; a.vy -= dot * ny * 0.92f
                                 b.vx += dot * nx * 0.92f; b.vy += dot * ny * 0.92f
+                                if (dot > 0.008f && step - lastClackStep >= 3) {
+                                    lastClackStep = step
+                                    onPlayCue(SoundCue.WOOD_TAP)
+                                }
                             }
                         }
                     }
@@ -262,9 +288,20 @@ fun CarromScreen(
                         }
                 ) {
                     val w = this.size.width; val h = this.size.height
-                    // Pockets
+                    // Pockets & pocket flash ripple
                     pockets.forEach { (px, py) ->
                         drawCircle(Color(0xFF141414), radius = w * 0.052f, center = Offset(px * w, py * h))
+                    }
+                    lastPocketPos?.let { (px, py) ->
+                        val rp = pocketRipple.value
+                        if (rp < 0.99f) {
+                            drawCircle(
+                                color = Color(0xFFFFCA28).copy(alpha = (1f - rp) * 0.85f),
+                                radius = w * (0.055f + rp * 0.06f),
+                                center = Offset(px * w, py * h),
+                                style = Stroke(width = 4f)
+                            )
+                        }
                     }
                     // Center circle & baselines
                     drawCircle(Color(0xFF8D6E63), radius = w * 0.14f, center = Offset(w * 0.5f, h * 0.5f), style = Stroke(3f))
@@ -287,6 +324,13 @@ fun CarromScreen(
                     if (!isSimulating && winnerSeat == null) {
                         val sy = if (activeSeat == 0) 0.84f else 0.16f
                         val center = Offset(strikerX * w, sy * h)
+                        if (!activePlayer.isAi) {
+                            drawCircle(
+                                color = Color(0xFF1976D2).copy(alpha = 0.25f),
+                                radius = 0.044f * w * strikerPulseScale,
+                                center = center
+                            )
+                        }
                         drawCircle(Color(0xFF1976D2), radius = 0.044f * w, center = center)
                         drawCircle(Color.White, radius = 0.044f * w, center = center, style = Stroke(2.5f))
                         dragVector?.let { dv ->

@@ -38,6 +38,9 @@ import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
 import com.example.ui.components.MonoTag
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -60,6 +63,7 @@ fun WordScrambleScreen(
     var score by remember { mutableIntStateOf(0) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var finished by remember { mutableStateOf(false) }
+    var errorShakeCount by remember { mutableIntStateOf(0) }
 
     fun loadWord(idx: Int) {
         val item = deck[idx % deck.size]
@@ -80,17 +84,19 @@ fun WordScrambleScreen(
     fun checkAnswer() {
         val guess = chosen.joinToString("") { it.second.toString() }
         if (guess == entry.word) {
-            onPlayCue(SoundCue.WIN)
             streak++
             score += entry.word.length * 20 + streak * 15 - if (showHint) 25 else 0
             if (round + 1 >= 8) {
                 finished = true
+                onPlayCue(SoundCue.WIN)
                 onRecordOutcome(MatchOutcome.COMPLETE, "Player", "Cleared 8 scrambles • Score $score", score, 0)
             } else {
+                onPlayCue(SoundCue.TILE_MERGE)
                 round++
                 loadWord(round)
             }
         } else {
+            errorShakeCount++
             onPlayCue(SoundCue.ERROR)
             feedback = "Not quite — try rearranging the tiles."
         }
@@ -148,7 +154,7 @@ fun WordScrambleScreen(
         Spacer(Modifier.height(16.dp))
 
         // Answer Slots
-        MonoCard {
+        MonoCard(modifier = Modifier.shakeOnTrigger(errorShakeCount)) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -164,12 +170,14 @@ fun WordScrambleScreen(
                         Surface(
                             modifier = Modifier
                                 .size(44.dp)
+                                .springPop(item?.second, popScale = 1.16f)
+                                .bouncyPress(item != null)
                                 .clickable(enabled = item != null) {
                                     if (item != null) {
                                         chosen.remove(item)
                                         pool.add(item)
                                         feedback = null
-                                        onPlayCue(SoundCue.MOVE)
+                                        onPlayCue(SoundCue.KEY_TICK)
                                     }
                                 },
                             shape = RoundedCornerShape(10.dp),
@@ -208,11 +216,13 @@ fun WordScrambleScreen(
                 Surface(
                     modifier = Modifier
                         .size(50.dp)
+                        .springPop(item.first, popScale = 1.12f)
+                        .bouncyPress()
                         .clickable {
                             pool.remove(item)
                             chosen.add(item)
                             feedback = null
-                            onPlayCue(SoundCue.MOVE)
+                            onPlayCue(SoundCue.KEY_TICK)
                         },
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
@@ -234,21 +244,26 @@ fun WordScrambleScreen(
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
-                onClick = { showHint = true },
+                onClick = {
+                    showHint = true
+                    onPlayCue(SoundCue.HINT)
+                },
                 enabled = !showHint,
-                modifier = Modifier.weight(1f).height(48.dp)
+                modifier = Modifier.weight(1f).height(48.dp).bouncyPress(!showHint)
             ) { Text("Hint") }
             OutlinedButton(
                 onClick = {
                     val temp = pool.toList().shuffled()
                     pool.clear()
                     pool.addAll(temp)
+                    onPlayCue(SoundCue.SHUFFLE)
                 },
-                modifier = Modifier.weight(1f).height(48.dp)
+                modifier = Modifier.weight(1f).height(48.dp).bouncyPress()
             ) { Text("Shuffle") }
             OutlinedButton(
                 onClick = {
                     streak = 0
+                    onPlayCue(SoundCue.TURN_PASS)
                     if (round + 1 >= 8) {
                         finished = true
                         onRecordOutcome(MatchOutcome.COMPLETE, "Player", "Score $score", score, 0)
@@ -257,14 +272,15 @@ fun WordScrambleScreen(
                         loadWord(round)
                     }
                 },
-                modifier = Modifier.weight(1f).height(48.dp)
+                modifier = Modifier.weight(1f).height(48.dp).bouncyPress()
             ) { Text("Skip") }
         }
         Spacer(Modifier.height(8.dp))
+        val canCheck = chosen.size == entry.word.length
         Button(
             onClick = { checkAnswer() },
-            enabled = chosen.size == entry.word.length,
-            modifier = Modifier.fillMaxWidth().height(50.dp),
+            enabled = canCheck,
+            modifier = Modifier.fillMaxWidth().height(50.dp).bouncyPress(canCheck),
             shape = RoundedCornerShape(12.dp)
         ) { Text("Check Word") }
     }

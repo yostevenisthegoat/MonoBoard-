@@ -39,17 +39,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.rememberCoroutineScope
 import com.example.data.repo.MatchOutcome
 import com.example.data.sound.SoundCue
 import com.example.domain.GameCatalog
 import com.example.domain.GameSessionConfig
 import com.example.domain.PlayMode
+import com.example.ui.components.AnimatedDieView
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
 import com.example.ui.components.PassAndPlayTurnHeader
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun BackgammonScreen(
@@ -75,10 +81,13 @@ fun BackgammonScreen(
     var borneOff by remember { mutableStateOf(listOf(0, 0)) }
     var activeSeat by remember { mutableIntStateOf(0) }
     var diceRemaining by remember { mutableStateOf<List<Int>>(emptyList()) }
+    var lastDicePair by remember { mutableStateOf(1 to 1) }
+    var isRolling by remember { mutableStateOf(false) }
     var selectedSource by remember { mutableStateOf<Int?>(null) } // -1 = bar
     var statusText by remember { mutableStateOf("Tap Roll Dice to start.") }
     var winnerSeat by remember { mutableStateOf<Int?>(null) }
     var recorded by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     fun canBearOff(pts: List<Int>, b: List<Int>, seat: Int): Boolean {
         if (b[seat] > 0) return false
@@ -140,7 +149,7 @@ fun BackgammonScreen(
         bar = nextBar
         borneOff = nextOff
         selectedSource = null
-        onPlayCue(if (hit) SoundCue.CAPTURE else SoundCue.MOVE)
+        onPlayCue(if (hit) SoundCue.CAPTURE else SoundCue.WOOD_TAP)
 
         if (nextOff[activeSeat] >= 15) {
             winnerSeat = activeSeat
@@ -160,23 +169,30 @@ fun BackgammonScreen(
     }
 
     fun rollDice() {
-        if (diceRemaining.isNotEmpty() || winnerSeat != null) return
-        val d1 = (1..6).random(); val d2 = (1..6).random()
-        val dice = if (d1 == d2) listOf(d1, d1, d1, d1) else listOf(d1, d2)
-        onPlayCue(SoundCue.MOVE)
-        if (allLegalMoves(points, bar, activeSeat, dice).isEmpty()) {
-            statusText = "${sessionConfig.players[activeSeat].name} rolled $d1 & $d2 — blocked!"
-            activeSeat = 1 - activeSeat
-        } else {
-            diceRemaining = dice
-            statusText = "Rolled ${dice.joinToString(", ")} — select checker & target"
-            if (bar[activeSeat] > 0) selectedSource = -1
+        if (isRolling || diceRemaining.isNotEmpty() || winnerSeat != null) return
+        isRolling = true
+        onPlayCue(SoundCue.DICE_ROLL)
+        scope.launch {
+            delay(360L)
+            val d1 = (1..6).random(); val d2 = (1..6).random()
+            lastDicePair = d1 to d2
+            isRolling = false
+            val dice = if (d1 == d2) listOf(d1, d1, d1, d1) else listOf(d1, d2)
+            if (allLegalMoves(points, bar, activeSeat, dice).isEmpty()) {
+                statusText = "${sessionConfig.players[activeSeat].name} rolled $d1 & $d2 — blocked!"
+                onPlayCue(SoundCue.TURN_PASS)
+                activeSeat = 1 - activeSeat
+            } else {
+                diceRemaining = dice
+                statusText = "Rolled ${dice.joinToString(", ")} — select checker & target"
+                if (bar[activeSeat] > 0) selectedSource = -1
+            }
         }
     }
 
     val activePlayer = sessionConfig.players[activeSeat]
-    LaunchedEffect(activeSeat, diceRemaining, winnerSeat) {
-        if (winnerSeat == null && activePlayer.isAi) {
+    LaunchedEffect(activeSeat, diceRemaining, isRolling, winnerSeat) {
+        if (winnerSeat == null && activePlayer.isAi && !isRolling) {
             delay(420L)
             if (diceRemaining.isEmpty()) {
                 rollDice()
@@ -203,7 +219,7 @@ fun BackgammonScreen(
 
     fun restart() {
         points = initPoints(); bar = listOf(0, 0); borneOff = listOf(0, 0)
-        activeSeat = 0; diceRemaining = emptyList(); selectedSource = null
+        activeSeat = 0; diceRemaining = emptyList(); lastDicePair = 1 to 1; isRolling = false; selectedSource = null
         winnerSeat = null; recorded = false; statusText = "Tap Roll Dice to start."
     }
 
@@ -249,6 +265,7 @@ fun BackgammonScreen(
                                     executeMove(move.first, move.second, move.third)
                                 } else if (!activePlayer.isAi && legalMoves.any { it.first == idx }) {
                                     selectedSource = idx
+                                    onPlayCue(SoundCue.KEY_TICK)
                                 }
                             },
                             modifier = Modifier.weight(1f)
@@ -267,14 +284,18 @@ fun BackgammonScreen(
                         fontFamily = JetBrainsMonoFontFamily,
                         modifier = Modifier.clickable(enabled = bar[activeSeat] > 0 && !activePlayer.isAi) {
                             selectedSource = -1
+                            onPlayCue(SoundCue.KEY_TICK)
                         }
                     )
                     val canBearSelected = selectedSource != null && legalMoves.any { it.first == selectedSource && it.second == 24 }
                     Surface(
-                        modifier = Modifier.clickable(enabled = canBearSelected && !activePlayer.isAi) {
-                            val m = legalMoves.first { it.first == selectedSource && it.second == 24 }
-                            executeMove(m.first, m.second, m.third)
-                        },
+                        modifier = Modifier
+                            .pulseEffect(canBearSelected && !activePlayer.isAi, maxScale = 1.08f)
+                            .bouncyPress(canBearSelected && !activePlayer.isAi)
+                            .clickable(enabled = canBearSelected && !activePlayer.isAi) {
+                                val m = legalMoves.first { it.first == selectedSource && it.second == 24 }
+                                executeMove(m.first, m.second, m.third)
+                            },
                         shape = RoundedCornerShape(8.dp),
                         color = if (canBearSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
@@ -302,6 +323,7 @@ fun BackgammonScreen(
                                     executeMove(move.first, move.second, move.third)
                                 } else if (!activePlayer.isAi && legalMoves.any { it.first == idx }) {
                                     selectedSource = idx
+                                    onPlayCue(SoundCue.KEY_TICK)
                                 }
                             },
                             modifier = Modifier.weight(1f)
@@ -312,14 +334,29 @@ fun BackgammonScreen(
         }
 
         Spacer(Modifier.height(10.dp))
-        Button(
-            onClick = ::rollDice,
-            enabled = diceRemaining.isEmpty() && !activePlayer.isAi && winnerSeat == null,
-            modifier = Modifier.fillMaxWidth().height(50.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(Icons.Rounded.Casino, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(if (diceRemaining.isEmpty()) "Roll Dice" else "Dice Remaining: ${diceRemaining.joinToString(", ")}")
+            AnimatedDieView(value = lastDicePair.first, isRolling = isRolling, size = 44.dp)
+            AnimatedDieView(value = lastDicePair.second, isRolling = isRolling, size = 44.dp)
+            val canRoll = !isRolling && diceRemaining.isEmpty() && !activePlayer.isAi && winnerSeat == null
+            Button(
+                onClick = ::rollDice,
+                enabled = canRoll,
+                modifier = Modifier.weight(1f).height(48.dp).bouncyPress(canRoll)
+            ) {
+                Icon(Icons.Rounded.Casino, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    when {
+                        isRolling -> "Rolling..."
+                        diceRemaining.isEmpty() -> "Roll Dice"
+                        else -> "Left: ${diceRemaining.joinToString(", ")}"
+                    }
+                )
+            }
         }
     }
 
@@ -352,6 +389,7 @@ private fun BackgammonPointColumn(
     Column(
         modifier = modifier
             .fillMaxHeight()
+            .pulseEffect(isLegalDest, maxScale = 1.03f)
             .background(bg, RoundedCornerShape(4.dp))
             .border(
                 width = if (isLegalDest) 1.5.dp else 0.5.dp,
@@ -370,6 +408,7 @@ private fun BackgammonPointColumn(
                 modifier = Modifier
                     .size(16.dp)
                     .padding(1.dp)
+                    .springPop(absCount, popScale = 1.16f)
                     .clip(CircleShape)
                     .background(if (count > 0) Color(0xFFF2F2F2) else Color(0xFF2B2B2B))
                     .border(1.dp, Color.Gray, CircleShape),

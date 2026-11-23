@@ -39,6 +39,10 @@ import com.example.domain.PlayMode
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.PassAndPlayTurnHeader
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -90,6 +94,7 @@ fun NineMensMorrisScreen(
     var pendingRemoval by remember { mutableStateOf(false) }
     var winnerSeat by remember { mutableStateOf<Int?>(null) }
     var recorded by remember { mutableStateOf(false) }
+    var errorShakeCount by remember { mutableIntStateOf(0) }
 
     fun formsMill(board: List<Int>, idx: Int, player: Int): Boolean {
         return morrisMills.any { mill -> idx in mill && mill.all { board[it] == player } }
@@ -123,6 +128,7 @@ fun NineMensMorrisScreen(
             if (nodes[idx] != oppP) return
             val nonMillOpp = nodes.indices.filter { nodes[it] == oppP && !formsMill(nodes, it, oppP) }
             if (nonMillOpp.isNotEmpty() && formsMill(nodes, idx, oppP)) {
+                errorShakeCount++
                 onPlayCue(SoundCue.ERROR)
                 return
             }
@@ -141,9 +147,9 @@ fun NineMensMorrisScreen(
             toPlace = toPlace.toMutableList().apply { this[activeSeat]-- }
             if (formsMill(next, idx, p)) {
                 pendingRemoval = true
-                onPlayCue(SoundCue.TURN_PASS)
+                onPlayCue(SoundCue.BOUNCE)
             } else {
-                onPlayCue(SoundCue.MOVE)
+                onPlayCue(SoundCue.WOOD_TAP)
                 advanceTurn(next)
             }
         } else {
@@ -152,15 +158,16 @@ fun NineMensMorrisScreen(
             val canFly = myCount == 3
             if (nodes[idx] == p) {
                 selectedNode = idx
+                onPlayCue(SoundCue.KEY_TICK)
             } else if (sel != null && nodes[idx] == 0 && (canFly || idx in morrisAdj[sel])) {
                 val next = nodes.toMutableList().apply { this[sel] = 0; this[idx] = p }
                 nodes = next
                 selectedNode = null
                 if (formsMill(next, idx, p)) {
                     pendingRemoval = true
-                    onPlayCue(SoundCue.TURN_PASS)
+                    onPlayCue(SoundCue.BOUNCE)
                 } else {
-                    onPlayCue(SoundCue.MOVE)
+                    onPlayCue(SoundCue.WOOD_TAP)
                     advanceTurn(next)
                 }
             }
@@ -244,7 +251,7 @@ fun NineMensMorrisScreen(
         ) {
             val boardSize = minOf(maxWidth, maxHeight, 360.dp)
             Surface(
-                modifier = Modifier.size(boardSize),
+                modifier = Modifier.size(boardSize).shakeOnTrigger(errorShakeCount),
                 shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline)
@@ -273,16 +280,21 @@ fun NineMensMorrisScreen(
                         }
                     }
 
+                    val oppP = (1 - activeSeat) + 1
                     morrisCoords.forEachIndexed { idx, (gx, gy) ->
                         val nodeSize = 28.dp
                         val cx = pad + gx * step
                         val cy = pad + gy * step
                         val valP = nodes[idx]
                         val isSel = selectedNode == idx
+                        val isRemovableTarget = pendingRemoval && valP == oppP && !isAiTurn && winnerSeat == null
                         Box(
                             modifier = Modifier
                                 .offset { IntOffset((cx - nodeSize.toPx() / 2f).roundToInt(), (cy - nodeSize.toPx() / 2f).roundToInt()) }
                                 .size(nodeSize)
+                                .springPop(valP, popScale = 1.24f)
+                                .pulseEffect(isSel || isRemovableTarget, maxScale = 1.18f)
+                                .bouncyPress(enabled = !isAiTurn && winnerSeat == null)
                                 .clip(CircleShape)
                                 .background(
                                     when (valP) {
@@ -292,8 +304,8 @@ fun NineMensMorrisScreen(
                                     }
                                 )
                                 .border(
-                                    width = if (isSel) 3.dp else 1.5.dp,
-                                    color = if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                    width = if (isSel || isRemovableTarget) 3.dp else 1.5.dp,
+                                    color = if (isRemovableTarget) Color(0xFFE53935) else if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
                                     shape = CircleShape
                                 )
                                 .clickable(enabled = !isAiTurn && winnerSeat == null) { handleNodeTap(idx) }

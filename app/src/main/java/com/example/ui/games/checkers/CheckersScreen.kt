@@ -46,6 +46,8 @@ import com.example.domain.PlayMode
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.PassAndPlayTurnHeader
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.springPop
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -93,10 +95,17 @@ fun CheckersScreen(
                 CheckersEngine.chooseAiMove(state, sessionConfig.aiDifficulty)
             }
             if (best != null) {
+                val prevKings = state.board.sumOf { row -> row.count { it?.isKing == true } }
                 undoStack.add(state)
                 state = CheckersEngine.applyMove(state, best)
                 selectedSquare = state.mustContinueFrom
-                onPlayCue(if (best.isCapture) SoundCue.CAPTURE else SoundCue.MOVE)
+                val nowKings = state.board.sumOf { row -> row.count { it?.isKing == true } }
+                val cue = when {
+                    nowKings > prevKings -> SoundCue.BOUNCE
+                    best.isCapture -> SoundCue.CAPTURE
+                    else -> SoundCue.WOOD_TAP
+                }
+                onPlayCue(cue)
                 onSaveState(CheckersEngine.serialize(state), "${state.moveCount} moves")
             }
         }
@@ -201,13 +210,21 @@ fun CheckersScreen(
                                         )
                                         .clickable(enabled = !isAiTurn && state.winner == null && isDarkSq) {
                                             if (matchingMove != null) {
+                                                val prevKings = state.board.sumOf { row -> row.count { it?.isKing == true } }
                                                 undoStack.add(state)
                                                 state = CheckersEngine.applyMove(state, matchingMove)
                                                 selectedSquare = state.mustContinueFrom
-                                                onPlayCue(if (matchingMove.isCapture) SoundCue.CAPTURE else SoundCue.MOVE)
+                                                val nowKings = state.board.sumOf { row -> row.count { it?.isKing == true } }
+                                                val cue = when {
+                                                    nowKings > prevKings -> SoundCue.BOUNCE
+                                                    matchingMove.isCapture -> SoundCue.CAPTURE
+                                                    else -> SoundCue.WOOD_TAP
+                                                }
+                                                onPlayCue(cue)
                                                 onSaveState(CheckersEngine.serialize(state), "${state.moveCount} moves")
                                             } else if (canSelectSource) {
                                                 selectedSquare = r to c
+                                                onPlayCue(SoundCue.KEY_TICK)
                                             }
                                         },
                                     contentAlignment = Alignment.Center
@@ -218,6 +235,8 @@ fun CheckersScreen(
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxSize(0.76f)
+                                                .springPop(piece.side to piece.isKing, popScale = 1.2f)
+                                                .pulseEffect(active = isSelected || canSelectSource && state.mustContinueFrom != null, maxScale = 1.09f)
                                                 .clip(CircleShape)
                                                 .background(pieceColor)
                                                 .border(2.dp, rimColor, CircleShape),
@@ -228,7 +247,9 @@ fun CheckersScreen(
                                                     imageVector = Icons.Rounded.AutoAwesome,
                                                     contentDescription = "King",
                                                     tint = if (piece.side == CheckerSide.LIGHT) Color(0xFF1A1A1A) else Color(0xFFF3F3F3),
-                                                    modifier = Modifier.size(16.dp)
+                                                    modifier = Modifier
+                                                        .size(16.dp)
+                                                        .springPop(piece.isKing, popScale = 1.3f)
                                                 )
                                             }
                                         }
@@ -236,6 +257,7 @@ fun CheckersScreen(
                                         Box(
                                             modifier = Modifier
                                                 .size(14.dp)
+                                                .pulseEffect(active = true, maxScale = 1.25f)
                                                 .clip(CircleShape)
                                                 .background(Color.White.copy(alpha = 0.6f))
                                         )

@@ -39,6 +39,10 @@ import com.example.domain.GameCatalog
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.StatMetricTile
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 
 @Composable
@@ -59,6 +63,7 @@ fun NumberMatchScreen(
     var score by remember { mutableIntStateOf(0) }
     var addUsesLeft by remember { mutableIntStateOf(4) }
     var recorded by remember { mutableStateOf(false) }
+    var errorShakeCount by remember { mutableIntStateOf(0) }
 
     fun canConnect(i1: Int, i2: Int): Boolean {
         if (i1 == i2) return false
@@ -114,7 +119,7 @@ fun NumberMatchScreen(
         Spacer(Modifier.height(10.dp))
 
         Surface(
-            modifier = Modifier.fillMaxWidth().weight(1f),
+            modifier = Modifier.fillMaxWidth().weight(1f).shakeOnTrigger(errorShakeCount),
             shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surface,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
@@ -130,6 +135,9 @@ fun NumberMatchScreen(
                     Box(
                         modifier = Modifier
                             .aspectRatio(1f)
+                            .springPop(if (v != 0) v else null, popScale = 1.16f)
+                            .pulseEffect(isSel, maxScale = 1.12f)
+                            .bouncyPress(v != 0 && !cleared)
                             .background(
                                 when {
                                     v == 0 -> MaterialTheme.colorScheme.background
@@ -143,8 +151,10 @@ fun NumberMatchScreen(
                                 val prev = selectedIdx
                                 if (prev == null) {
                                     selectedIdx = idx
+                                    onPlayCue(SoundCue.KEY_TICK)
                                 } else if (prev == idx) {
                                     selectedIdx = null
+                                    onPlayCue(SoundCue.KEY_TICK)
                                 } else if (canConnect(prev, idx)) {
                                     val next = cells.toMutableList()
                                     next[prev] = 0
@@ -152,9 +162,10 @@ fun NumberMatchScreen(
                                     cells = next
                                     selectedIdx = null
                                     score += 15
-                                    onPlayCue(SoundCue.TURN_PASS)
+                                    onPlayCue(SoundCue.TILE_MERGE)
                                 } else {
                                     selectedIdx = idx
+                                    errorShakeCount++
                                     onPlayCue(SoundCue.ERROR)
                                 }
                             },
@@ -175,17 +186,18 @@ fun NumberMatchScreen(
         }
 
         Spacer(Modifier.height(10.dp))
+        val canAdd = addUsesLeft > 0 && !cleared
         Button(
             onClick = {
                 val rem = cells.filter { it != 0 }
                 if (rem.isNotEmpty() && addUsesLeft > 0) {
                     cells = cells + rem
                     addUsesLeft--
-                    onPlayCue(SoundCue.MOVE)
+                    onPlayCue(SoundCue.BOUNCE)
                 }
             },
-            enabled = addUsesLeft > 0 && !cleared,
-            modifier = Modifier.fillMaxWidth().height(48.dp)
+            enabled = canAdd,
+            modifier = Modifier.fillMaxWidth().height(48.dp).bouncyPress(canAdd)
         ) {
             Text("Add Remaining Digits ($addUsesLeft left)")
         }

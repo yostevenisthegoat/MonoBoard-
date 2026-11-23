@@ -1,5 +1,8 @@
 package com.example.ui.games.strategy
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,6 +34,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.example.data.prefs.AppSettings
 import com.example.data.repo.MatchOutcome
@@ -42,6 +47,8 @@ import com.example.domain.PlayMode
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.PassAndPlayTurnHeader
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.springPop
 import kotlinx.coroutines.delay
 
 @Composable
@@ -113,7 +120,7 @@ fun ReversiScreen(
         flips.forEach { (fr, fc) -> next[fr][fc] = p }
         val updated = next.map { it.toList() }
         board = updated
-        onPlayCue(if (flips.size >= 3) SoundCue.CAPTURE else SoundCue.MOVE)
+        onPlayCue(if (flips.size >= 3) SoundCue.CAPTURE else SoundCue.WOOD_TAP)
 
         val opp = 1 - activeSeat
         val oppMoves = validMoves(updated, opp + 1)
@@ -197,6 +204,7 @@ fun ReversiScreen(
                 board = prev.first
                 activeSeat = prev.second
                 gameOver = false
+                onPlayCue(SoundCue.KEY_TICK)
             }
         },
         onRestart = ::restart
@@ -237,19 +245,35 @@ fun ReversiScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     if (cell != 0) {
+                                        val density = LocalDensity.current.density
+                                        val flipRot by animateFloatAsState(
+                                            targetValue = if (cell == 1) 0f else 180f,
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioLowBouncy,
+                                                stiffness = Spring.StiffnessMediumLow
+                                            ),
+                                            label = "reversi_flip_${r}_$c"
+                                        )
+                                        val faceDark = flipRot <= 90f
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxSize(0.76f)
+                                                .springPop(cell, popScale = 1.15f)
+                                                .graphicsLayer {
+                                                    rotationY = flipRot
+                                                    cameraDistance = 10f * density
+                                                }
                                                 .clip(CircleShape)
-                                                .background(if (cell == 1) Color(0xFF141414) else Color(0xFFF5F5F5))
+                                                .background(if (faceDark) Color(0xFF141414) else Color(0xFFF5F5F5))
                                                 .border(1.5.dp, Color.Gray, CircleShape)
                                         )
                                     } else if (isValid && settings.showLegalMoves) {
                                         Box(
                                             modifier = Modifier
                                                 .size(10.dp)
+                                                .pulseEffect(active = !isAiTurn && !gameOver, maxScale = 1.24f)
                                                 .clip(CircleShape)
-                                                .background(Color.White.copy(alpha = 0.45f))
+                                                .background(Color.White.copy(alpha = 0.55f))
                                         )
                                     }
                                 }

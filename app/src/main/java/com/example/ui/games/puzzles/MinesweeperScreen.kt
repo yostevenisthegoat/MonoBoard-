@@ -44,9 +44,14 @@ import com.example.data.repo.MatchOutcome
 import com.example.data.sound.SoundCue
 import com.example.domain.GameCatalog
 import com.example.domain.GameSessionConfig
+import com.example.ui.components.AnimatedCounterText
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import kotlinx.coroutines.delay
 
@@ -83,6 +88,7 @@ fun MinesweeperScreen(
     var won by remember { mutableStateOf(false) }
     var elapsed by remember { mutableIntStateOf(0) }
     var recorded by remember { mutableStateOf(false) }
+    var explosionShakeCount by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(initialized, exploded, won) {
         while (initialized && !exploded && !won) {
@@ -155,7 +161,7 @@ fun MinesweeperScreen(
             val next = board.map { it.toMutableList() }
             next[r][c] = next[r][c].copy(flagged = !next[r][c].flagged)
             board = next.map { it.toList() }
-            onPlayCue(SoundCue.MOVE)
+            onPlayCue(SoundCue.KEY_TICK)
             return
         }
 
@@ -177,6 +183,7 @@ fun MinesweeperScreen(
             if (flags == target.adjacent) {
                 var hitMine = false
                 var cur = working
+                val beforeRevealed = cur.sumOf { row -> row.count { it.revealed } }
                 for (dr in -1..1) for (dc in -1..1) {
                     val nr = r + dr; val nc = c + dc
                     if (nr in 0 until gridSize && nc in 0 until gridSize && !cur[nr][nc].flagged && !cur[nr][nc].revealed) {
@@ -186,11 +193,13 @@ fun MinesweeperScreen(
                 }
                 if (hitMine) {
                     exploded = true
-                    onPlayCue(SoundCue.ERROR)
+                    explosionShakeCount++
+                    onPlayCue(SoundCue.EXPLOSION)
                     board = cur.map { row -> row.map { if (it.isMine) it.copy(revealed = true) else it } }
                 } else {
                     board = cur
-                    onPlayCue(SoundCue.MOVE)
+                    val afterRevealed = cur.sumOf { row -> row.count { it.revealed } }
+                    onPlayCue(if (afterRevealed - beforeRevealed > 3) SoundCue.TILE_MERGE else SoundCue.WOOD_TAP)
                     checkVictory(board)
                 }
             }
@@ -199,13 +208,17 @@ fun MinesweeperScreen(
 
         if (target.isMine) {
             exploded = true
-            onPlayCue(SoundCue.ERROR)
+            explosionShakeCount++
+            onPlayCue(SoundCue.EXPLOSION)
             board = working.map { row -> row.map { if (it.isMine) it.copy(revealed = true) else it } }
             return
         }
 
-        board = floodReveal(working, r, c)
-        onPlayCue(SoundCue.MOVE)
+        val beforeRevealed = working.sumOf { row -> row.count { it.revealed } }
+        val updated = floodReveal(working, r, c)
+        val afterRevealed = updated.sumOf { row -> row.count { it.revealed } }
+        board = updated
+        onPlayCue(if (afterRevealed - beforeRevealed > 3) SoundCue.TILE_MERGE else SoundCue.WOOD_TAP)
         checkVictory(board)
     }
 
@@ -248,12 +261,18 @@ fun MinesweeperScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
+                AnimatedCounterText(
                     text = "MINES: ${mineTotal - flaggedCount}",
                     style = MaterialTheme.typography.titleMedium.copy(fontFamily = JetBrainsMonoFontFamily)
                 )
                 OutlinedButton(
-                    onClick = { flagMode = !flagMode },
+                    onClick = {
+                        flagMode = !flagMode
+                        onPlayCue(SoundCue.KEY_TICK)
+                    },
+                    modifier = Modifier
+                        .bouncyPress()
+                        .pulseEffect(flagMode, maxScale = 1.04f),
                     shape = RoundedCornerShape(10.dp),
                     border = BorderStroke(if (flagMode) 1.5.dp else 1.dp, if (flagMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
                 ) {
@@ -278,7 +297,7 @@ fun MinesweeperScreen(
         ) {
             val size = minOf(maxWidth, maxHeight)
             Surface(
-                modifier = Modifier.size(size),
+                modifier = Modifier.size(size).shakeOnTrigger(explosionShakeCount),
                 shape = RoundedCornerShape(10.dp),
                 color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline)
@@ -298,6 +317,8 @@ fun MinesweeperScreen(
                                         .weight(1f)
                                         .aspectRatio(1f)
                                         .padding(1.dp)
+                                        .springPop(cell.revealed to cell.flagged, popScale = 1.15f)
+                                        .bouncyPress(!cell.revealed && !exploded && !won)
                                         .background(bg, RoundedCornerShape(4.dp))
                                         .border(0.5.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp))
                                         .combinedClickable(

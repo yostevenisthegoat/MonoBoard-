@@ -51,6 +51,7 @@ fun PrivacyCurtainOverlay(
         MonoCard(
             modifier = Modifier
                 .fillMaxWidth()
+                .springPop(nextPlayer.name, popScale = 1.05f)
                 .testTag("privacy_curtain_card"),
             elevated = true,
             borderHighlight = true
@@ -64,7 +65,8 @@ fun PrivacyCurtainOverlay(
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier.pulseEffect(active = true, maxScale = 1.07f)
                 ) {
                     Box(
                         modifier = Modifier.size(64.dp),
@@ -115,6 +117,7 @@ fun PrivacyCurtainOverlay(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp)
+                        .bouncyPress()
                         .testTag("reveal_turn_button"),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(
@@ -154,7 +157,9 @@ fun PassAndPlayTurnHeader(
             players.forEachIndexed { idx, player ->
                 val active = idx == activeIndex
                 MonoCard(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .springPop(if (active) activeIndex else null, popScale = 1.04f),
                     elevated = active,
                     borderHighlight = active
                 ) {
@@ -165,7 +170,12 @@ fun PassAndPlayTurnHeader(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        AvatarBadge(symbol = player.avatar, isActive = active, size = 28.dp)
+                        AvatarBadge(
+                            symbol = player.avatar,
+                            isActive = active,
+                            size = 28.dp,
+                            modifier = Modifier.pulseEffect(active = active, maxScale = 1.09f)
+                        )
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = player.name,
@@ -182,7 +192,7 @@ fun PassAndPlayTurnHeader(
                             )
                         }
                         if (scores != null && idx < scores.size) {
-                            Text(
+                            AnimatedCounterText(
                                 text = scores[idx].toString(),
                                 style = MaterialTheme.typography.titleMedium.copy(fontFamily = JetBrainsMonoFontFamily),
                                 color = MaterialTheme.colorScheme.onSurface

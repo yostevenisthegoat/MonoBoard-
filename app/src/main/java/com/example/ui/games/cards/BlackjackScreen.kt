@@ -23,9 +23,13 @@ import androidx.compose.ui.unit.dp
 import com.example.data.repo.MatchOutcome
 import com.example.data.sound.SoundCue
 import com.example.domain.GameCatalog
+import com.example.ui.components.AnimatedCounterText
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
 import com.example.ui.components.StatMetricTile
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 
 private enum class BjPhase { BETTING, PLAYER_TURN, RESOLVED }
 
@@ -44,6 +48,7 @@ fun BlackjackScreen(
     var playerHand by remember { mutableStateOf<List<PlayingCard>>(emptyList()) }
     var dealerHand by remember { mutableStateOf<List<PlayingCard>>(emptyList()) }
     var phase by remember { mutableStateOf(BjPhase.BETTING) }
+    var bustShakeCount by remember { mutableIntStateOf(0) }
     var statusText by remember { mutableStateOf("Place an offline chip bet and deal.") }
 
     fun handValue(hand: List<PlayingCard>): Int {
@@ -65,7 +70,7 @@ fun BlackjackScreen(
         dealerHand = listOf(deck[1], deck[3].copy(faceUp = false))
         deck = deck.drop(4)
         phase = BjPhase.PLAYER_TURN
-        onPlayCue(SoundCue.MOVE)
+        onPlayCue(SoundCue.SHUFFLE)
 
         if (handValue(playerHand) == 21) {
             val revealedDealer = dealerHand.map { it.copy(faceUp = true) }
@@ -125,13 +130,14 @@ fun BlackjackScreen(
         val next = playerHand + deck.first()
         playerHand = next
         deck = deck.drop(1)
-        onPlayCue(SoundCue.MOVE)
+        onPlayCue(SoundCue.CARD_FLIP)
         val pv = handValue(next)
         if (pv > 21) {
             dealerHand = dealerHand.map { it.copy(faceUp = true) }
             phase = BjPhase.RESOLVED
             statusText = "Bust ($pv)! Dealer takes the pot."
-            onPlayCue(SoundCue.ERROR)
+            bustShakeCount++
+            onPlayCue(SoundCue.EXPLOSION)
             onRecordOutcome(MatchOutcome.LOSS, "Dealer", "Busted at $pv", chips, 15)
         } else if (pv == 21) {
             resolveDealer()
@@ -147,11 +153,13 @@ fun BlackjackScreen(
         val next = playerHand + deck.first()
         playerHand = next
         deck = deck.drop(1)
+        onPlayCue(SoundCue.CARD_FLIP)
         if (handValue(next) > 21) {
             dealerHand = dealerHand.map { it.copy(faceUp = true) }
             phase = BjPhase.RESOLVED
             statusText = "Bust (${handValue(next)})!"
-            onPlayCue(SoundCue.ERROR)
+            bustShakeCount++
+            onPlayCue(SoundCue.EXPLOSION)
             bet /= 2
         } else {
             resolveDealer()
@@ -162,6 +170,7 @@ fun BlackjackScreen(
     fun resetBankroll() {
         chips = 500; bet = 25; playerHand = emptyList(); dealerHand = emptyList()
         phase = BjPhase.BETTING; statusText = "Bankroll reset to 500 chips."
+        onPlayCue(SoundCue.SHUFFLE)
     }
 
     GameScaffold(
@@ -178,7 +187,7 @@ fun BlackjackScreen(
         }
         Spacer(Modifier.height(14.dp))
 
-        MonoCard(elevated = true, modifier = Modifier.fillMaxWidth().weight(1f)) {
+        MonoCard(elevated = true, modifier = Modifier.fillMaxWidth().weight(1f).shakeOnTrigger(bustShakeCount)) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(18.dp),
                 verticalArrangement = Arrangement.SpaceBetween
@@ -191,7 +200,7 @@ fun BlackjackScreen(
                     }
                 }
 
-                Text(statusText, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 12.dp))
+                AnimatedCounterText(text = statusText, style = MaterialTheme.typography.titleMedium)
 
                 Column {
                     Text("YOUR HAND (${handValue(playerHand)})", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
@@ -207,23 +216,29 @@ fun BlackjackScreen(
         if (phase != BjPhase.PLAYER_TURN) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(10, 25, 50, 100).forEach { amt ->
-                    OutlinedButton(onClick = { bet = amt }, modifier = Modifier.weight(1f)) {
+                    OutlinedButton(
+                        onClick = { bet = amt; onPlayCue(SoundCue.KEY_TICK) },
+                        modifier = Modifier.weight(1f).bouncyPress()
+                    ) {
                         Text("$amt")
                     }
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Button(onClick = ::dealRound, modifier = Modifier.fillMaxWidth().height(50.dp)) {
+            Button(
+                onClick = ::dealRound,
+                modifier = Modifier.fillMaxWidth().height(50.dp).bouncyPress()
+            ) {
                 Text("Deal Hand (Bet $bet)")
             }
         } else {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = ::hit, modifier = Modifier.weight(1f).height(50.dp)) { Text("Hit") }
-                Button(onClick = ::resolveDealer, modifier = Modifier.weight(1f).height(50.dp)) { Text("Stand") }
+                Button(onClick = ::hit, modifier = Modifier.weight(1f).height(50.dp).bouncyPress()) { Text("Hit") }
+                Button(onClick = ::resolveDealer, modifier = Modifier.weight(1f).height(50.dp).bouncyPress()) { Text("Stand") }
                 OutlinedButton(
                     onClick = ::doubleDown,
                     enabled = playerHand.size == 2 && chips >= bet,
-                    modifier = Modifier.weight(1f).height(50.dp)
+                    modifier = Modifier.weight(1f).height(50.dp).bouncyPress(enabled = playerHand.size == 2 && chips >= bet)
                 ) { Text("Double") }
             }
         }

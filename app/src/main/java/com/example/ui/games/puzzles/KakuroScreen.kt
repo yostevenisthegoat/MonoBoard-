@@ -36,6 +36,10 @@ import com.example.data.sound.SoundCue
 import com.example.domain.GameCatalog
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.pulseEffect
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 
 // Dynamic valid Kakuro puzzle generator on a 5x5 block-and-run grid
@@ -91,6 +95,7 @@ fun KakuroScreen(
     var entries by remember(puzzle) { mutableStateOf(List(5) { List(5) { 0 } }) }
     var selected by remember { mutableStateOf<Pair<Int, Int>?>(1 to 1) }
     var recorded by remember { mutableStateOf(false) }
+    var conflictShakeCount by remember { mutableIntStateOf(0) }
 
     // Valid if every fillable cell has 1..9, unique in its row & col run, and matches every clue sum
     val solved = remember(entries, puzzle) {
@@ -130,7 +135,7 @@ fun KakuroScreen(
         onRestart = ::restart
     ) {
         Surface(
-            modifier = Modifier.fillMaxWidth().weight(1f),
+            modifier = Modifier.fillMaxWidth().weight(1f).shakeOnTrigger(conflictShakeCount),
             shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surface,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
@@ -143,11 +148,14 @@ fun KakuroScreen(
                             val aClue = puzzle.acrossClues[r to c]
                             val dClue = puzzle.downClues[r to c]
                             val isSel = selected == (r to c)
+                            val vCell = entries[r][c]
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
                                     .aspectRatio(1f)
                                     .padding(1.dp)
+                                    .springPop(if (isFillable && vCell != 0) vCell else null, popScale = 1.16f)
+                                    .pulseEffect(isSel && !solved, maxScale = 1.06f)
                                     .background(
                                         when {
                                             !isFillable -> MaterialTheme.colorScheme.background
@@ -157,7 +165,10 @@ fun KakuroScreen(
                                         RoundedCornerShape(8.dp)
                                     )
                                     .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
-                                    .clickable(enabled = isFillable && !solved) { selected = r to c },
+                                    .clickable(enabled = isFillable && !solved) {
+                                        selected = r to c
+                                        onPlayCue(SoundCue.KEY_TICK)
+                                    },
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (isFillable) {
@@ -190,15 +201,34 @@ fun KakuroScreen(
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             (1..9).forEach { d ->
                 Surface(
-                    modifier = Modifier.weight(1f).height(48.dp).clickable(enabled = selected != null && !solved) {
-                        val (sr, sc) = selected!!
-                        if (puzzle.solution[sr][sc] != 0) {
-                            val next = entries.map { it.toMutableList() }
-                            next[sr][sc] = if (next[sr][sc] == d) 0 else d
-                            entries = next.map { it.toList() }
-                            onPlayCue(SoundCue.MOVE)
-                        }
-                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .bouncyPress(selected != null && !solved)
+                        .clickable(enabled = selected != null && !solved) {
+                            val (sr, sc) = selected!!
+                            if (puzzle.solution[sr][sc] != 0) {
+                                val next = entries.map { it.toMutableList() }
+                                val newVal = if (next[sr][sc] == d) 0 else d
+                                next[sr][sc] = newVal
+                                val updated = next.map { it.toList() }
+                                entries = updated
+                                val rowDup = newVal != 0 && (1..4).any { c -> c != sc && puzzle.solution[sr][c] != 0 && updated[sr][c] == newVal }
+                                val colDup = newVal != 0 && (1..4).any { r -> r != sr && puzzle.solution[r][sc] != 0 && updated[r][sc] == newVal }
+                                val rowRunVals = (1..4).filter { c -> puzzle.solution[sr][c] != 0 }.map { c -> updated[sr][c] }
+                                val colRunVals = (1..4).filter { r -> puzzle.solution[r][sc] != 0 }.map { r -> updated[r][sc] }
+                                val rowSolved = rowRunVals.none { it == 0 } && rowRunVals.distinct().size == rowRunVals.size && rowRunVals.sum() == puzzle.acrossClues[sr to 0]
+                                val colSolved = colRunVals.none { it == 0 } && colRunVals.distinct().size == colRunVals.size && colRunVals.sum() == puzzle.downClues[0 to sc]
+                                if (rowDup || colDup) {
+                                    conflictShakeCount++
+                                    onPlayCue(SoundCue.ERROR)
+                                } else if (newVal != 0 && (rowSolved || colSolved)) {
+                                    onPlayCue(SoundCue.TILE_MERGE)
+                                } else {
+                                    onPlayCue(SoundCue.KEY_TICK)
+                                }
+                            }
+                        },
                     shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)

@@ -41,6 +41,9 @@ import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
 import com.example.ui.components.MonoTag
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import kotlinx.coroutines.delay
 
@@ -62,6 +65,7 @@ fun AnagramsScreen(
     var remainingSeconds by remember { mutableIntStateOf(90) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var finished by remember { mutableStateOf(false) }
+    var errorShakeCount by remember { mutableIntStateOf(0) }
 
     fun startRack(nextIdx: Int) {
         rackIdx = nextIdx % WordBank.anagramRacks.size
@@ -78,6 +82,9 @@ fun AnagramsScreen(
         while (!finished && remainingSeconds > 0) {
             delay(1000)
             remainingSeconds--
+            if (remainingSeconds in 1..5) {
+                onPlayCue(SoundCue.CHECK_ALERT)
+            }
             if (remainingSeconds == 0) {
                 finished = true
                 onPlayCue(SoundCue.WIN)
@@ -98,25 +105,29 @@ fun AnagramsScreen(
         when {
             word.length < 3 -> {
                 feedback = "Minimum 3 letters"
+                errorShakeCount++
                 onPlayCue(SoundCue.ERROR)
             }
             word in foundWords -> {
                 feedback = "$word already discovered"
+                errorShakeCount++
                 onPlayCue(SoundCue.ERROR)
             }
             word in rack.validWords -> {
                 foundWords.add(0, word)
                 score += word.length * word.length * 10
                 feedback = "+${word.length * word.length * 10} pts for $word!"
-                onPlayCue(SoundCue.CAPTURE)
                 if (foundWords.size == rack.validWords.size) {
                     finished = true
                     onPlayCue(SoundCue.WIN)
                     onRecordOutcome(MatchOutcome.WIN, "Player", "Cleared all ${rack.validWords.size} anagrams", score, 90 - remainingSeconds)
+                } else {
+                    onPlayCue(SoundCue.TILE_MERGE)
                 }
             }
             else -> {
                 feedback = "$word is not in this rack's dictionary"
+                errorShakeCount++
                 onPlayCue(SoundCue.ERROR)
             }
         }
@@ -130,7 +141,7 @@ fun AnagramsScreen(
         onToggleFavorite = onToggleFavorite,
         onRestart = { startRack(rackIdx + 1) }
     ) {
-        MonoCard(elevated = true) {
+        MonoCard(elevated = true, modifier = Modifier.shakeOnTrigger(errorShakeCount)) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -141,6 +152,7 @@ fun AnagramsScreen(
                 val built = selectedIndices.joinToString("") { rack.letters[it].toString() }
                 Text(
                     text = built.ifEmpty { "TAP LETTERS" },
+                    modifier = Modifier.springPop(built, popScale = 1.08f),
                     fontFamily = JetBrainsMonoFontFamily,
                     fontWeight = FontWeight.Bold,
                     fontSize = 24.sp,
@@ -163,9 +175,11 @@ fun AnagramsScreen(
                 Surface(
                     modifier = Modifier
                         .size(46.dp)
+                        .springPop(used, popScale = 1.15f)
+                        .bouncyPress(!used && !finished)
                         .clickable(enabled = !used && !finished) {
                             selectedIndices.add(idx)
-                            onPlayCue(SoundCue.MOVE)
+                            onPlayCue(SoundCue.KEY_TICK)
                         },
                     shape = RoundedCornerShape(10.dp),
                     color = if (used) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant,
@@ -187,13 +201,17 @@ fun AnagramsScreen(
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
-                onClick = { selectedIndices.clear() },
-                modifier = Modifier.weight(1f).height(48.dp)
+                onClick = {
+                    selectedIndices.clear()
+                    onPlayCue(SoundCue.KEY_TICK)
+                },
+                modifier = Modifier.weight(1f).height(48.dp).bouncyPress()
             ) { Text("Clear") }
+            val canSubmit = selectedIndices.size >= 3 && !finished
             Button(
                 onClick = { submitWord() },
-                enabled = selectedIndices.size >= 3 && !finished,
-                modifier = Modifier.weight(2f).height(48.dp)
+                enabled = canSubmit,
+                modifier = Modifier.weight(2f).height(48.dp).bouncyPress(canSubmit)
             ) { Text("Submit Word") }
         }
 
@@ -211,7 +229,9 @@ fun AnagramsScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 foundWords.forEach { w ->
-                    MonoTag(text = w, emphasized = w.length >= 6)
+                    Box(modifier = Modifier.springPop(w, popScale = 1.16f)) {
+                        MonoTag(text = w, emphasized = w.length >= 6)
+                    }
                 }
             }
         }

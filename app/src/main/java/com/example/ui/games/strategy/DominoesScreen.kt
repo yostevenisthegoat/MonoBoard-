@@ -41,6 +41,9 @@ import com.example.ui.components.GameScaffold
 import com.example.ui.components.MonoCard
 import com.example.ui.components.PassAndPlayTurnHeader
 import com.example.ui.components.PrivacyCurtainOverlay
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import kotlinx.coroutines.delay
 
@@ -81,6 +84,7 @@ fun DominoesScreen(
     var winnerSeat by remember { mutableStateOf<Int?>(null) }
     var statusText by remember { mutableStateOf("Play any tile to open the line.") }
     var recorded by remember { mutableStateOf(false) }
+    var errorShakeCount by remember { mutableIntStateOf(0) }
 
     val leftEnd = chain.firstOrNull()?.a
     val rightEnd = chain.lastOrNull()?.b
@@ -109,7 +113,7 @@ fun DominoesScreen(
         val newHands = hands.mapIndexed { idx, list -> if (idx == activeSeat) list - tile else list }
         hands = newHands
         consecutivePasses = 0
-        onPlayCue(SoundCue.MOVE)
+        onPlayCue(SoundCue.WOOD_TAP)
 
         if (newHands[activeSeat].isEmpty()) {
             winnerSeat = activeSeat
@@ -131,7 +135,7 @@ fun DominoesScreen(
             boneyard = boneyard.drop(1)
             hands = hands.mapIndexed { idx, list -> if (idx == activeSeat) list + drawn else list }
             statusText = "${sessionConfig.players[activeSeat].name} drew from boneyard."
-            onPlayCue(SoundCue.MOVE)
+            onPlayCue(SoundCue.CARD_FLIP)
         } else {
             consecutivePasses++
             onPlayCue(SoundCue.TURN_PASS)
@@ -218,6 +222,7 @@ fun DominoesScreen(
                     ) {
                         chain.forEach { t ->
                             Surface(
+                                modifier = Modifier.springPop(t, popScale = 1.16f),
                                 shape = RoundedCornerShape(8.dp),
                                 color = MaterialTheme.colorScheme.surface,
                                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
@@ -239,16 +244,28 @@ fun DominoesScreen(
             Spacer(Modifier.height(8.dp))
 
             Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shakeOnTrigger(errorShakeCount)
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 hands[activeSeat].forEach { tile ->
                     val playable = canPlayTile(tile) && !activePlayer.isAi && winnerSeat == null
+                    val canInteract = !activePlayer.isAi && winnerSeat == null
                     Surface(
                         modifier = Modifier
                             .size(width = 64.dp, height = 84.dp)
+                            .springPop(tile, popScale = 1.08f)
+                            .bouncyPress(playable)
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable(enabled = playable) { playTile(tile) },
+                            .clickable(enabled = canInteract) {
+                                if (playable) playTile(tile)
+                                else {
+                                    errorShakeCount++
+                                    onPlayCue(SoundCue.ERROR)
+                                }
+                            },
                         shape = RoundedCornerShape(12.dp),
                         color = if (playable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
@@ -277,10 +294,11 @@ fun DominoesScreen(
 
             Spacer(Modifier.height(10.dp))
             val hasPlayable = hands[activeSeat].any { canPlayTile(it) }
+            val canDrawOrPass = !hasPlayable && !activePlayer.isAi && winnerSeat == null
             OutlinedButton(
                 onClick = ::drawOrPass,
-                enabled = !hasPlayable && !activePlayer.isAi && winnerSeat == null,
-                modifier = Modifier.fillMaxWidth().height(48.dp)
+                enabled = canDrawOrPass,
+                modifier = Modifier.fillMaxWidth().height(48.dp).bouncyPress(canDrawOrPass)
             ) {
                 Text(if (boneyard.isNotEmpty()) "Draw from Boneyard (${boneyard.size})" else "Pass Turn")
             }

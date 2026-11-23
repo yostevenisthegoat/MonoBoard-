@@ -41,12 +41,17 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import com.example.data.repo.MatchOutcome
 import com.example.data.sound.SoundCue
 import com.example.domain.GameCatalog
 import com.example.ui.components.GameCompletionDialog
 import com.example.ui.components.GameScaffold
 import com.example.ui.components.StatMetricTile
+import com.example.ui.components.bouncyPress
+import com.example.ui.components.shakeOnTrigger
+import com.example.ui.components.springPop
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import kotlinx.coroutines.delay
 import kotlin.math.abs
@@ -84,6 +89,7 @@ fun Game2048Screen(
     var gameOver by remember { mutableStateOf(false) }
     var elapsed by remember { mutableIntStateOf(0) }
     var recorded by remember { mutableStateOf(false) }
+    var deadMoveShakeCount by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(gameOver) {
         while (!gameOver) {
@@ -152,10 +158,13 @@ fun Game2048Screen(
             board = spawnTile(candidate)
             score += gained
             bestScore = maxOf(bestScore, score)
-            onPlayCue(if (gained > 0) SoundCue.TURN_PASS else SoundCue.MOVE)
+            onPlayCue(if (gained > 0) SoundCue.TILE_MERGE else SoundCue.PIECE_SLIDE)
             if (!hasMoves(board)) {
                 gameOver = true
             }
+        } else {
+            deadMoveShakeCount++
+            onPlayCue(SoundCue.ERROR)
         }
     }
 
@@ -199,6 +208,7 @@ fun Game2048Screen(
                 board = prev.first
                 score = prev.second
                 gameOver = false
+                onPlayCue(SoundCue.KEY_TICK)
             }
         },
         onRestart = ::restart
@@ -233,7 +243,7 @@ fun Game2048Screen(
         ) {
             val size = minOf(maxWidth, maxHeight, 360.dp)
             Surface(
-                modifier = Modifier.size(size),
+                modifier = Modifier.size(size).shakeOnTrigger(deadMoveShakeCount),
                 shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surface,
                 border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.outline)
@@ -249,11 +259,15 @@ fun Game2048Screen(
                         ) {
                             for (c in 0..3) {
                                 val v = board[r][c]
-                                val (bg, fg) = tileColors2048(v)
+                                val (bgTarget, fg) = tileColors2048(v)
+                                val animBg by animateColorAsState(bgTarget, tween(160), label = "2048_bg_${r}_$c")
                                 Surface(
-                                    modifier = Modifier.weight(1f).aspectRatio(1f),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .aspectRatio(1f)
+                                        .springPop(if (v > 0) v else null, popScale = 1.15f),
                                     shape = RoundedCornerShape(12.dp),
-                                    color = bg,
+                                    color = animBg,
                                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
@@ -285,18 +299,18 @@ fun Game2048Screen(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = { slide(Dir2048.LEFT) }) {
+            IconButton(onClick = { slide(Dir2048.LEFT) }, modifier = Modifier.bouncyPress()) {
                 Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, contentDescription = "Slide Left")
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                IconButton(onClick = { slide(Dir2048.UP) }) {
+                IconButton(onClick = { slide(Dir2048.UP) }, modifier = Modifier.bouncyPress()) {
                     Icon(Icons.Rounded.KeyboardArrowUp, contentDescription = "Slide Up")
                 }
-                IconButton(onClick = { slide(Dir2048.DOWN) }) {
+                IconButton(onClick = { slide(Dir2048.DOWN) }, modifier = Modifier.bouncyPress()) {
                     Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Slide Down")
                 }
             }
-            IconButton(onClick = { slide(Dir2048.RIGHT) }) {
+            IconButton(onClick = { slide(Dir2048.RIGHT) }, modifier = Modifier.bouncyPress()) {
                 Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = "Slide Right")
             }
         }
